@@ -1,0 +1,8 @@
+- id: objective
+  label: What operational outcome do you want?
+- id: building
+  label: Which process should improve first?
+- id: maturity
+  label: How mature is your current automation practice?
+- id: help_needed
+  label: What should the guide do next?

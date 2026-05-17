@@ -1,0 +1,116 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: Type DEPLOY to deploy main to production.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  APP_DIR: ${{ vars.APP_DIR_PROD || '/opt/gestalt-workframe' }}
+  WEB_DIR: ${{ vars.WEB_DIR_PROD || '/var/www/gestalt-workframe' }}
+  ROOT_SITE_DIR: ${{ vars.ROOT_SITE_DIR_PROD || '/var/www/site' }}
+  NGINX_SITE_FILE: ${{ vars.NGINX_SITE_FILE_PROD || '/etc/nginx/sites-available/site' }}
+  SERVICE_NAME: ${{ vars.SERVICE_NAME_PROD || 'gestalt-workframe' }}
+  API_PORT: ${{ vars.API_PORT_PROD || '8000' }}
+
+jobs:
+  deploy:
+    name: Deploy production to VPS
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm_production == 'DEPLOY'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          $scripts = @("llm/download_model.ps1", "llm/start_server.ps1", "llm/control_local_model.ps1")
+          foreach ($script in $scripts) {
+            [scriptblock]::Create((Get-Content $script -Raw)) | Out-Null
+            Write-Host "parse_ok $script"
+          }
+
+      - name: Run backend tests
+        run: |
+          uv sync --frozen --group dev
+          uv run pytest
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm build
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          cat > ~/.ssh/deploy_vps <<< "$VPS_SSH_KEY"
+          chmod 600 ~/.ssh/deploy_vps
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          SSH_KEY_PATH: ~/.ssh/deploy_vps
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_CLOUD_API_KEY: ${{ secrets.GEMINI_CLOUD_API_KEY }}
+          GEMINI_CLOUD_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
+          GEMINI_CLOUD_MODEL: ${{ vars.GEMINI_CLOUD_MODEL }}
+          ADMIN_POLICY_TOKEN: ${{ secrets.ADMIN_POLICY_TOKEN }}
+          APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+          LIBRARY_PUBLISHER_GITHUB_APP_ID: ${{ secrets.LIBRARY_PUBLISHER_GITHUB_APP_ID }}
+          LIBRARY_PUBLISHER_GITHUB_INSTALLATION_ID: ${{ secrets.LIBRARY_PUBLISHER_GITHUB_INSTALLATION_ID }}
+          LIBRARY_PUBLISHER_GITHUB_PRIVATE_KEY_B64: ${{ secrets.LIBRARY_PUBLISHER_GITHUB_PRIVATE_KEY_B64 }}
+          LIBRARY_PUBLISHER_REPO: ${{ vars.LIBRARY_PUBLISHER_REPO }}
+          LIBRARY_PUBLISHER_BASE_BRANCH: ${{ vars.LIBRARY_PUBLISHER_BASE_BRANCH }}
+          ENABLE_CLOUD_SPILLOVER: "true"
+          ENABLE_LOW_COST_CLOUD: "true"
+          ENABLE_CLAUDE_FALLBACK: "true"
+          CLOUD_SPILLOVER_MAX_CALLS_PER_TURN: "1"
+          CLOUD_SPILLOVER_MAX_CALLS_PER_SESSION: "10"
+          CLOUD_SPILLOVER_MAX_CALLS_PER_DAY: "20"
+          CLOUD_SPILLOVER_MAX_CALLS_PER_MONTH: "500"
+          CLOUD_SPILLOVER_MAX_DAILY_USD: "5"
+          CLOUD_SPILLOVER_MAX_MONTHLY_USD: "50"
+          CLOUD_SPILLOVER_MAX_INPUT_TOKENS_PER_CALL: "16000"
+          CLOUD_SPILLOVER_MAX_OUTPUT_TOKENS_PER_CALL: "2048"
+        run: bash .github/scripts/deploy_vps.sh

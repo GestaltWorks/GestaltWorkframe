@@ -1,0 +1,84 @@
+name: Claude code review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      review_scope:
+        description: "Review scope: diff or full codebase"
+        required: false
+        default: "diff"
+        type: choice
+        options:
+          - diff
+          - full
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Claude code review
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_REVIEW_MODEL: ${{ vars.CLAUDE_REVIEW_MODEL || 'claude-sonnet-4-6' }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      REVIEW_SCOPE: ${{ github.event.inputs.review_scope || 'diff' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Review with Claude
+        run: python .github/scripts/claude_review.py
+
+      - name: Print Claude review
+        if: always()
+        run: |
+          if [ -s claude-review.md ]; then
+            cat claude-review.md
+          else
+            echo "Claude review did not produce output."
+          fi
+
+      - name: Upload Claude review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-review-${{ github.run_id }}
+          path: claude-review.md
+          if-no-files-found: ignore
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request_target'
+        run: |
+          if [ -s claude-review.md ]; then
+            if ! gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              -f body="$(cat claude-review.md)"; then
+              echo "Failed to post Claude review as a PR comment; see job summary." >&2
+            fi
+          fi
+
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -s claude-review.md ]; then
+            cat claude-review.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Claude review did not produce output." >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,0 +1,91 @@
+name: Deploy development
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-development
+  cancel-in-progress: true
+
+env:
+  APP_DIR: ${{ vars.APP_DIR_DEV || '/opt/gestalt-workframe-dev' }}
+  WEB_DIR: ${{ vars.WEB_DIR_DEV || '/var/www/gestalt-workframe-dev' }}
+  SERVICE_NAME: ${{ vars.SERVICE_NAME_DEV || 'gestalt-workframe-dev' }}
+  API_PORT: ${{ vars.API_PORT_DEV || '8001' }}
+
+jobs:
+  deploy:
+    name: Deploy development to VPS
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Run backend tests
+        run: |
+          uv sync --frozen --group dev
+          uv run pytest
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm build
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          cat > ~/.ssh/deploy_vps <<< "$VPS_SSH_KEY"
+          chmod 600 ~/.ssh/deploy_vps
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          SSH_KEY_PATH: ~/.ssh/deploy_vps
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_CLOUD_API_KEY: ${{ secrets.GEMINI_CLOUD_API_KEY }}
+          GEMINI_CLOUD_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
+          GEMINI_CLOUD_MODEL: ${{ vars.GEMINI_CLOUD_MODEL }}
+          ADMIN_POLICY_TOKEN: ${{ secrets.ADMIN_POLICY_TOKEN }}
+          APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+          LIBRARY_PUBLISHER_GITHUB_APP_ID: ${{ secrets.LIBRARY_PUBLISHER_GITHUB_APP_ID }}
+          LIBRARY_PUBLISHER_GITHUB_INSTALLATION_ID: ${{ secrets.LIBRARY_PUBLISHER_GITHUB_INSTALLATION_ID }}
+          LIBRARY_PUBLISHER_GITHUB_PRIVATE_KEY_B64: ${{ secrets.LIBRARY_PUBLISHER_GITHUB_PRIVATE_KEY_B64 }}
+          LIBRARY_PUBLISHER_REPO: ${{ vars.LIBRARY_PUBLISHER_REPO }}
+          LIBRARY_PUBLISHER_BASE_BRANCH: ${{ vars.LIBRARY_PUBLISHER_BASE_BRANCH }}
+        run: bash .github/scripts/deploy_vps.sh

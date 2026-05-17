@@ -1,0 +1,33 @@
+name: Retention sweep
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 07:23 UTC. Off-peak; not aligned with the discovery hourly cron.
+    - cron: "23 7 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retention-sweep
+  cancel-in-progress: false
+
+jobs:
+  run-retention:
+    name: Trigger production retention sweep
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call retention sweep endpoint
+        env:
+          RETENTION_SWEEP_URL: ${{ vars.RETENTION_SWEEP_URL }}
+          ADMIN_POLICY_TOKEN: ${{ secrets.ADMIN_POLICY_TOKEN }}
+        run: |
+          if [ -z "$ADMIN_POLICY_TOKEN" ]; then
+            echo "ADMIN_POLICY_TOKEN is not configured"
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            -X POST "$RETENTION_SWEEP_URL" \
+            -H "X-Admin-Token: $ADMIN_POLICY_TOKEN" \
+            -H "Content-Type: application/json"

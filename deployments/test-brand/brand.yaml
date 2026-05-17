@@ -1,0 +1,9 @@
+name: Northstar Automation Lab
+colors:
+  primary_dark: "#102033"
+  accent: "#6EE7B7"
+  off_white: "#FAFAF7"
+fonts:
+  heading: Space Grotesk
+  body: Source Sans 3
+logo_path: /brand/test-logo.svg

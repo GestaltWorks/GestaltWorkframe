@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-rajdhani: var(--font-rajdhani);
+  --font-inter: var(--font-inter);
+
+  /* Brand tokens. Override per-deployment by extending @theme. */
+  --color-brand-dark:       #242128;
+  --color-brand-gold-warm:  #D4BF91;
+  --color-brand-gold-mid:   #D8C883;
+  --color-brand-gold:       #DCD077;
+  --color-brand-sage:       #566B5B;
+  --color-brand-offwhite:   #F5F5F5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  line-height: 1.5;
+  text-size-adjust: 100%;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 3px solid #DCD077;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more), (forced-colors: active) {
+  :where(a, button) {
+    text-decoration-thickness: 2px;
+  }
+
+  :where(input, textarea, select, button) {
+    border-color: currentColor;
+  }
+}

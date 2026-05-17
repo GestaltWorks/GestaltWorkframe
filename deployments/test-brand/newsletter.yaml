@@ -1,0 +1,4 @@
+enabled: true
+name: Field Notes
+cadence_days: 14
+audience_visibility: internal-team

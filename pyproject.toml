@@ -1,0 +1,62 @@
+[project]
+name = "gestalt-workframe"
+version = "0.1.0"
+description = "Gestalt Workframe: a multi-mode, brandable chatbot framework with local-LLM-first routing, retrieval grounding, and cloud spillover budgets."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "anthropic>=0.51.0",
+    "beautifulsoup4>=4.14.3",
+    "httpx>=0.28.0",
+    "chromadb>=1.5.8",
+    "fastapi>=0.136.1",
+    "langchain>=1.2.15",
+    "langchain-chroma>=1.1.0",
+    "langchain-community>=0.4.1",
+    "langchain-huggingface>=1.2.2",
+    "markdown>=3.10.2",
+    "mcp[cli]>=1.8.0",
+    "prompt-toolkit>=3.0.51",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.1.0",
+    "python-multipart>=0.0.22",
+    "sentence-transformers>=5.4.1",
+    "spacy>=3.8.14",
+    "sqlalchemy>=2.0.49",
+    "sqlmodel>=0.0.38",
+    "unstructured>=0.18.32",
+    "uvicorn>=0.41.0",
+    "cryptography>=46.0.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = [".", "packages/gestalt-connector-protocol", "packages/gestalt-connector-fs", "packages/gestalt-connector-itglue", "packages/gestalt-connector-hudu", "packages/gestalt-connector-msgraph-files", "packages/gestalt-connector-s3"]
+markers = [
+    "integration: hits real external APIs (requires ANTHROPIC_API_KEY)",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["api", "core", "kb"]
+omit = [
+    # Generated / scaffolding code that doesn't benefit from line coverage.
+    "*/__pycache__/*",
+    "*/migrations.py",
+]
+
+[tool.coverage.report]
+# Floor matches the measured baseline at the time pytest-cov was wired in.
+# Bump this up as coverage improves; lowering it requires an explicit commit
+# that explains why a regression is acceptable.
+fail_under = 80
+show_missing = false
+precision = 1

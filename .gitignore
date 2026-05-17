@@ -1,0 +1,51 @@
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Data / artifacts ---
+database.db
+kb/chroma_db/
+
+# --- Local LLM binaries ---
+*.gguf
+*.zip
+llama-vulkan/
+
+# --- Frontend ---
+web/node_modules/
+web/.next/
+web/out/
+web/.env*
+web/.vercel/
+web/coverage/
+web/*.tsbuildinfo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- IDE / Claude Code ---
+.vscode/
+.idea/
+.claude/
+
+# --- Misc ---
+*.log
+.tmp-*
+
+# pytest-cov
+.coverage
+coverage.xml
+htmlcov/
+previews/

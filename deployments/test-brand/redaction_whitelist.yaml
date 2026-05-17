@@ -1,0 +1,4 @@
+allow_sensitive_classes:
+  - internal_network
+internal_hostname_patterns:
+  - internal-[a-z]+\.example

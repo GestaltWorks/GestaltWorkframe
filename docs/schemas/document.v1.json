@@ -1,0 +1,778 @@
+{
+  "$defs": {
+    "ACL": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_principals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Principals",
+          "type": "array"
+        },
+        "denied_principals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Denied Principals",
+          "type": "array"
+        },
+        "source_acl_hash": {
+          "default": "",
+          "title": "Source Acl Hash",
+          "type": "string"
+        },
+        "visibility": {
+          "default": "internal",
+          "enum": [
+            "public",
+            "internal",
+            "restricted",
+            "private"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "title": "ACL",
+      "type": "object"
+    },
+    "Attachment": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_id": {
+          "default": "",
+          "title": "Attachment Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "default": "",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "media_type": {
+          "default": "application/octet-stream",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Bytes"
+        },
+        "source_url": {
+          "default": "",
+          "title": "Source Url",
+          "type": "string"
+        },
+        "text_extract": {
+          "default": "",
+          "title": "Text Extract",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename"
+      ],
+      "title": "Attachment",
+      "type": "object"
+    },
+    "BodyStructured": {
+      "additionalProperties": false,
+      "properties": {
+        "sections": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "callout": "#/$defs/CalloutSection",
+                "code": "#/$defs/CodeSection",
+                "heading": "#/$defs/HeadingSection",
+                "link": "#/$defs/LinkSection",
+                "list": "#/$defs/ListSection",
+                "paragraph": "#/$defs/ParagraphSection",
+                "table": "#/$defs/TableSection"
+              },
+              "propertyName": "section_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/HeadingSection"
+              },
+              {
+                "$ref": "#/$defs/ParagraphSection"
+              },
+              {
+                "$ref": "#/$defs/ListSection"
+              },
+              {
+                "$ref": "#/$defs/TableSection"
+              },
+              {
+                "$ref": "#/$defs/CodeSection"
+              },
+              {
+                "$ref": "#/$defs/CalloutSection"
+              },
+              {
+                "$ref": "#/$defs/LinkSection"
+              }
+            ]
+          },
+          "title": "Sections",
+          "type": "array"
+        }
+      },
+      "title": "BodyStructured",
+      "type": "object"
+    },
+    "CalloutSection": {
+      "additionalProperties": false,
+      "properties": {
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "section_id": {
+          "default": "",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "const": "callout",
+          "default": "callout",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "tone": {
+          "default": "note",
+          "enum": [
+            "note",
+            "info",
+            "warning",
+            "danger"
+          ],
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "title": "CalloutSection",
+      "type": "object"
+    },
+    "CodeSection": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "default": "",
+          "title": "Code",
+          "type": "string"
+        },
+        "language": {
+          "default": "",
+          "title": "Language",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "section_id": {
+          "default": "",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "const": "code",
+          "default": "code",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "title": "CodeSection",
+      "type": "object"
+    },
+    "Diagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "checksum": {
+          "default": "",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "connector_version": {
+          "default": "",
+          "title": "Connector Version",
+          "type": "string"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_etag": {
+          "default": "",
+          "title": "Source Etag",
+          "type": "string"
+        },
+        "trace_id": {
+          "default": "",
+          "title": "Trace Id",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "title": "Diagnostics",
+      "type": "object"
+    },
+    "DocumentPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "attribution": {
+          "default": "",
+          "title": "Attribution",
+          "type": "string"
+        },
+        "curriculum_eligible": {
+          "default": false,
+          "title": "Curriculum Eligible",
+          "type": "boolean"
+        },
+        "display_eligible": {
+          "default": false,
+          "title": "Display Eligible",
+          "type": "boolean"
+        },
+        "license": {
+          "default": "",
+          "title": "License",
+          "type": "string"
+        },
+        "provenance": {
+          "default": "",
+          "title": "Provenance",
+          "type": "string"
+        },
+        "retention_class": {
+          "default": "standard",
+          "title": "Retention Class",
+          "type": "string"
+        },
+        "retrieval_eligible": {
+          "default": true,
+          "title": "Retrieval Eligible",
+          "type": "boolean"
+        }
+      },
+      "title": "DocumentPolicy",
+      "type": "object"
+    },
+    "HeadingSection": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "default": 1,
+          "maximum": 6,
+          "minimum": 1,
+          "title": "Level",
+          "type": "integer"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "section_id": {
+          "default": "",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "const": "heading",
+          "default": "heading",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "title": "HeadingSection",
+      "type": "object"
+    },
+    "LinkSection": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "section_id": {
+          "default": "",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "const": "link",
+          "default": "link",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "LinkSection",
+      "type": "object"
+    },
+    "ListSection": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "ordered": {
+          "default": false,
+          "title": "Ordered",
+          "type": "boolean"
+        },
+        "section_id": {
+          "default": "",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "const": "list",
+          "default": "list",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "title": "ListSection",
+      "type": "object"
+    },
+    "ParagraphSection": {
+      "additionalProperties": false,
+      "properties": {
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "section_id": {
+          "default": "",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "const": "paragraph",
+          "default": "paragraph",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "title": "ParagraphSection",
+      "type": "object"
+    },
+    "Privacy": {
+      "additionalProperties": false,
+      "properties": {
+        "cloud_llm_eligible": {
+          "default": true,
+          "title": "Cloud Llm Eligible",
+          "type": "boolean"
+        },
+        "contains_pii": {
+          "default": false,
+          "title": "Contains Pii",
+          "type": "boolean"
+        },
+        "redactions_applied": {
+          "items": {
+            "$ref": "#/$defs/RedactionEvent"
+          },
+          "title": "Redactions Applied",
+          "type": "array"
+        },
+        "sensitive_classes_present": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sensitive Classes Present",
+          "type": "array"
+        }
+      },
+      "title": "Privacy",
+      "type": "object"
+    },
+    "RedactionEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "detector_id": {
+          "title": "Detector Id",
+          "type": "string"
+        },
+        "position": {
+          "minimum": 0,
+          "title": "Position",
+          "type": "integer"
+        },
+        "sensitive_class": {
+          "title": "Sensitive Class",
+          "type": "string"
+        },
+        "snippet_hash": {
+          "title": "Snippet Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "detector_id",
+        "sensitive_class",
+        "snippet_hash",
+        "position"
+      ],
+      "title": "RedactionEvent",
+      "type": "object"
+    },
+    "SourceMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "connector_id": {
+          "minLength": 1,
+          "title": "Connector Id",
+          "type": "string"
+        },
+        "connector_name": {
+          "default": "",
+          "title": "Connector Name",
+          "type": "string"
+        },
+        "external_id": {
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "object"
+        },
+        "organization": {
+          "default": "",
+          "title": "Organization",
+          "type": "string"
+        },
+        "parent_external_id": {
+          "default": "",
+          "title": "Parent External Id",
+          "type": "string"
+        },
+        "path": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Path",
+          "type": "array"
+        },
+        "source_system": {
+          "default": "",
+          "title": "Source System",
+          "type": "string"
+        },
+        "source_type": {
+          "minLength": 1,
+          "title": "Source Type",
+          "type": "string"
+        },
+        "source_url": {
+          "default": "",
+          "title": "Source Url",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connector_id",
+        "source_type",
+        "external_id"
+      ],
+      "title": "SourceMetadata",
+      "type": "object"
+    },
+    "TableSection": {
+      "additionalProperties": false,
+      "properties": {
+        "caption": {
+          "default": "",
+          "title": "Caption",
+          "type": "string"
+        },
+        "headers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "rows": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "section_id": {
+          "default": "",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "const": "table",
+          "default": "table",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "title": "TableSection",
+      "type": "object"
+    },
+    "Timestamps": {
+      "additionalProperties": false,
+      "properties": {
+        "ingested_at": {
+          "format": "date-time",
+          "title": "Ingested At",
+          "type": "string"
+        },
+        "last_seen_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Seen At"
+        },
+        "source_created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Created At"
+        },
+        "source_updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Updated At"
+        }
+      },
+      "title": "Timestamps",
+      "type": "object"
+    }
+  },
+  "$id": "https://example.com/schemas/document.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "acl": {
+      "$ref": "#/$defs/ACL"
+    },
+    "attachments": {
+      "items": {
+        "$ref": "#/$defs/Attachment"
+      },
+      "title": "Attachments",
+      "type": "array"
+    },
+    "body_structured": {
+      "$ref": "#/$defs/BodyStructured"
+    },
+    "body_text": {
+      "minLength": 1,
+      "title": "Body Text",
+      "type": "string"
+    },
+    "diagnostics": {
+      "$ref": "#/$defs/Diagnostics"
+    },
+    "doc_id": {
+      "minLength": 1,
+      "title": "Doc Id",
+      "type": "string"
+    },
+    "policy": {
+      "$ref": "#/$defs/DocumentPolicy"
+    },
+    "privacy": {
+      "$ref": "#/$defs/Privacy"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceMetadata"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "timestamps": {
+      "$ref": "#/$defs/Timestamps"
+    }
+  },
+  "required": [
+    "doc_id",
+    "source",
+    "body_text"
+  ],
+  "title": "Document",
+  "type": "object"
+}

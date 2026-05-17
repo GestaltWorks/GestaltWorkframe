@@ -1,0 +1,42 @@
+# Keep the build context small and free of host-only artifacts.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+
+# Python build/test debris
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/.turbo/
+
+# Local data — operator-owned, mounted as volumes at runtime instead.
+database.db
+database.db-*
+kb/chroma_db/
+*.sqlite
+*.sqlite-*
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docs-only artifacts not needed in images
+docs/
+*.md
+!README.md

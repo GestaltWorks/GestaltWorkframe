@@ -1,0 +1,48 @@
+name: Database backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 03:11 UTC. Off-peak; not aligned with discovery (:17) or
+    # retention (07:23) crons to avoid I/O contention on the single VPS.
+    - cron: "11 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+env:
+  APP_DIR: ${{ vars.APP_DIR_PROD || '/opt/gestalt-workframe' }}
+  BACKUP_DIR: ${{ vars.BACKUP_DIR_PROD || '/var/backups/gestalt-workframe' }}
+  BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS || '14' }}
+
+jobs:
+  run-backup:
+    name: Run SQLite backup on VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run backup over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [[ -z "$VPS_HOST" || -z "$VPS_USER" || -z "$VPS_SSH_KEY" ]]; then
+            echo "VPS_HOST / VPS_USER / VPS_SSH_KEY are required"
+            exit 1
+          fi
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/deploy_vps"
+          chmod 600 "$HOME/.ssh/deploy_vps"
+          ssh-keyscan -H "$VPS_HOST" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+
+          # Copy the backup script over and execute it with the env it needs.
+          scp -i "$HOME/.ssh/deploy_vps" .github/scripts/backup_db.sh "$VPS_USER@$VPS_HOST:/tmp/db-backup.sh"
+          ssh -i "$HOME/.ssh/deploy_vps" "$VPS_USER@$VPS_HOST" \
+            "chmod +x /tmp/db-backup.sh && APP_DIR='$APP_DIR' BACKUP_DIR='$BACKUP_DIR' BACKUP_RETENTION_DAYS='$BACKUP_RETENTION_DAYS' /tmp/db-backup.sh"

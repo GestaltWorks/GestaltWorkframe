@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "doc_id": "fixture-doc-1",
+  "source": {
+    "connector_id": "reference",
+    "source_type": "article",
+    "external_id": "article-1",
+    "title": "Fixture Article"
+  },
+  "body_text": "Fixture Article\nThis is a paragraph.\n- one\n- two",
+  "body_structured": {
+    "sections": [
+      {"section_type": "heading", "text": "Fixture Article", "level": 1},
+      {"section_type": "paragraph", "text": "This is a paragraph."},
+      {"section_type": "list", "items": ["one", "two"]},
+      {"section_type": "table", "headers": ["Field", "Value"], "rows": [["Name", "Router"]]},
+      {"section_type": "code", "language": "yaml", "code": "enabled: true"},
+      {"section_type": "callout", "title": "Note", "text": "Check the source."},
+      {"section_type": "link", "label": "Source", "url": "https://example.com/article-1"}
+    ]
+  },
+  "tags": ["reference", "article"]
+}

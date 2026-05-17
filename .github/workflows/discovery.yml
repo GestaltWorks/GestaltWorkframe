@@ -1,0 +1,48 @@
+name: Discovery scheduler
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: discovery-scheduler
+  cancel-in-progress: false
+
+jobs:
+  run-discovery:
+    name: Trigger production discovery pass
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call discovery scheduler endpoint
+        env:
+          DISCOVERY_RUN_URL: ${{ vars.DISCOVERY_RUN_URL }}
+          ADMIN_POLICY_TOKEN: ${{ secrets.ADMIN_POLICY_TOKEN }}
+        run: |
+          if [ -z "$ADMIN_POLICY_TOKEN" ]; then
+            echo "ADMIN_POLICY_TOKEN is not configured"
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            -X POST "$DISCOVERY_RUN_URL" \
+            -H "X-Admin-Token: $ADMIN_POLICY_TOKEN" \
+            -H "Content-Type: application/json"
+      - name: Dispatch any due scheduled newsletter sends
+        env:
+          NEWSLETTER_DISPATCH_URL: ${{ vars.NEWSLETTER_DISPATCH_URL }}
+          ADMIN_POLICY_TOKEN: ${{ secrets.ADMIN_POLICY_TOKEN }}
+        run: |
+          if [ -z "$ADMIN_POLICY_TOKEN" ]; then
+            echo "ADMIN_POLICY_TOKEN is not configured"
+            exit 1
+          fi
+          # Idempotent. Returns {"summary":{"dispatched":N,"failed":M}}.
+          # The dispatcher's atomic status transition prevents a second
+          # call from re-sending an already-sent issue.
+          curl --fail --silent --show-error \
+            -X POST "$NEWSLETTER_DISPATCH_URL" \
+            -H "X-Admin-Token: $ADMIN_POLICY_TOKEN" \
+            -H "Content-Type: application/json"

@@ -1,0 +1,38 @@
+name: Newsletter scheduler
+
+# Daily check; the endpoint itself is idempotent and respects the 10-day
+# cycle window. When the window has elapsed and there is no
+# awaiting_approval draft sitting unreviewed, it composes a new draft
+# and emails the configured approver(s) a link to /admin/newsletter.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 13:07 UTC daily — off the :00/:30 marks to be a polite cron citizen.
+    - cron: "7 13 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newsletter-scheduler
+  cancel-in-progress: false
+
+jobs:
+  run-newsletter-cycle:
+    name: Trigger production newsletter cadence check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call newsletter cycle endpoint
+        env:
+          NEWSLETTER_RUN_URL: ${{ vars.NEWSLETTER_RUN_URL }}
+          ADMIN_POLICY_TOKEN: ${{ secrets.ADMIN_POLICY_TOKEN }}
+        run: |
+          if [ -z "$ADMIN_POLICY_TOKEN" ]; then
+            echo "ADMIN_POLICY_TOKEN is not configured"
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            -X POST "$NEWSLETTER_RUN_URL" \
+            -H "X-Admin-Token: $ADMIN_POLICY_TOKEN" \
+            -H "Content-Type: application/json"

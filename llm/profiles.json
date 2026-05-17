@@ -1,0 +1,199 @@
+{
+  "profiles": {
+    "llama-3.1-8b-q4": {
+      "provider": "llama_cpp",
+      "model": "llama-3.1-8b-instruct-q4_k_m",
+      "base_url": "http://localhost:8080/v1",
+      "role": "primary",
+      "cost_tier": "local",
+      "deployment_status": "active",
+      "runtime_group": "personal_gpu",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_only", "local_then_low_cost", "local_then_claude_if_high_value"],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 0.9
+      },
+      "recommended_for": ["local_default", "routine_chat", "guided_intake", "basic_help", "implementation_help", "socratic_tutor"],
+      "avoid_for": ["deep_code_review", "large_refactor", "high_stakes_reasoning"],
+      "routing_priority": 40,
+      "description": "Llama 3.1 8B Instruct Q4_K_M — baseline for 6900XT (16 GB VRAM)"
+    },
+    "llama-3.2-3b-q4": {
+      "provider": "llama_cpp",
+      "model": "llama-3.2-3b-instruct-q4_k_m",
+      "base_url": "http://localhost:8081/v1",
+      "role": "primary",
+      "cost_tier": "local",
+      "deployment_status": "candidate",
+      "runtime_group": "personal_gpu",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_only", "local_then_low_cost"],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 0.9
+      },
+      "recommended_for": ["fast_local_chat", "guided_intake", "classification", "socratic_tutor"],
+      "avoid_for": ["code_review", "complex_debugging", "high_stakes_reasoning"],
+      "routing_priority": 30,
+      "description": "Llama 3.2 3B Instruct Q4_K_M — lighter option, faster inference"
+    },
+    "qwen-2.5-coder-7b-q4": {
+      "provider": "llama_cpp",
+      "model": "qwen-2.5-coder-7b-instruct-q4_k_m",
+      "base_url": "http://localhost:8082/v1",
+      "role": "primary",
+      "cost_tier": "local",
+      "deployment_status": "candidate",
+      "runtime_group": "personal_gpu",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_only", "local_then_low_cost"],
+      "params": {
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "top_p": 0.9
+      },
+      "recommended_for": ["local_coding", "workflow_examples", "jinja_help", "workflow_debugging", "implementation_help"],
+      "avoid_for": ["high_value_service_inquiry", "deep_code_review"],
+      "routing_priority": 55,
+      "description": "Qwen 2.5 Coder 7B Instruct Q4_K_M via llama.cpp/Vulkan — code-heavy automator sessions"
+    },
+    "claude-haiku-4-5": {
+      "provider": "claude",
+      "model": "claude-haiku-4-5-20251001",
+      "base_url": "",
+      "role": "secondary",
+      "cost_tier": "low_cost",
+      "deployment_status": "active",
+      "runtime_group": "cloud",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_then_low_cost"],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "top_p": 1.0
+      },
+      "recommended_for": ["low_cost_fallback", "summarization", "routine_support", "classification", "workflow_examples", "implementation_help", "socratic_tutor"],
+      "avoid_for": ["deep_code_review", "large_refactor", "critical_security_review"],
+      "routing_priority": 60,
+      "context_window_tokens": 200000,
+      "max_output_tokens": 64000,
+      "description": "Claude Haiku 4.5 — low-cost cloud fallback"
+    },
+    "gemini-cloud": {
+      "provider": "openai_compatible",
+      "model": "gemini-2.5-flash",
+      "model_env": "GEMINI_CLOUD_MODEL",
+      "base_url": "",
+      "base_url_env": "GEMINI_CLOUD_BASE_URL",
+      "api_key_env": "GEMINI_CLOUD_API_KEY",
+      "role": "secondary",
+      "cost_tier": "low_cost",
+      "deployment_status": "active",
+      "runtime_group": "cloud",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_then_low_cost"],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "top_p": 1.0
+      },
+      "recommended_for": ["low_cost_fallback", "routine_support", "classification", "implementation_help", "socratic_tutor"],
+      "avoid_for": ["critical_security_review", "large_refactor", "high_stakes_reasoning"],
+      "routing_priority": 58,
+      "description": "Gemini cloud route through Google AI Studio's OpenAI-compatible API. Configure server-side GEMINI_CLOUD_BASE_URL, GEMINI_CLOUD_API_KEY, and optionally GEMINI_CLOUD_MODEL."
+    },
+    "claude-sonnet-4-5": {
+      "provider": "claude",
+      "model": "claude-sonnet-4-5-20250929",
+      "base_url": "",
+      "role": "escalation",
+      "cost_tier": "premium",
+      "deployment_status": "candidate",
+      "runtime_group": "cloud",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_then_claude_if_high_value"],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 8192,
+        "top_p": 1.0
+      },
+      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "workflow_debugging", "workflow_examples", "jinja_help", "implementation_help", "complex_implementation", "socratic_tutor", "high_value_service_inquiry"],
+      "avoid_for": ["routine_low_cost_fallback"],
+      "routing_priority": 80,
+      "context_window_tokens": 200000,
+      "max_output_tokens": 64000,
+      "description": "Claude Sonnet 4.5 — high-value cloud escalation"
+    },
+    "claude-sonnet-4-6": {
+      "provider": "claude",
+      "model": "claude-sonnet-4-6",
+      "base_url": "",
+      "role": "escalation",
+      "cost_tier": "premium",
+      "deployment_status": "active",
+      "runtime_group": "cloud",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_then_claude_if_high_value"],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 8192,
+        "top_p": 1.0
+      },
+      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "workflow_debugging", "workflow_examples", "jinja_help", "implementation_help", "complex_implementation", "socratic_tutor", "long_context_reasoning", "frontend_design", "high_value_service_inquiry"],
+      "avoid_for": ["routine_low_cost_fallback"],
+      "routing_priority": 95,
+      "context_window_tokens": 1000000,
+      "max_output_tokens": 64000,
+      "evidence": [
+        {
+          "source": "Anthropic Models Overview",
+          "url": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+          "note": "Lists claude-sonnet-4-6 as the best combination of speed and intelligence with 1M context and 64k max output."
+        },
+        {
+          "source": "Anthropic Sonnet 4.6 announcement",
+          "url": "https://www.anthropic.com/research/claude-sonnet-4-6",
+          "note": "Positions Sonnet 4.6 as a coding, long-context reasoning, agent planning, knowledge-work, and design upgrade."
+        },
+        {
+          "source": "Claude Sonnet 4.6 system card",
+          "url": "https://www.anthropic.com/claude-sonnet-4-6-system-card",
+          "note": "Reports strong SWE-bench Verified performance and multilingual coding evaluation results."
+        }
+      ],
+      "description": "Claude Sonnet 4.6 — default premium Claude escalation for coding, code review, and high-value reasoning"
+    },
+    "claude-opus-4-7": {
+      "provider": "claude",
+      "model": "claude-opus-4-7",
+      "base_url": "",
+      "role": "escalation",
+      "cost_tier": "premium",
+      "deployment_status": "candidate",
+      "runtime_group": "cloud",
+      "enabled_by_default": true,
+      "allowed_response_policies": ["local_then_claude_if_high_value"],
+      "params": {
+        "temperature": 0.5,
+        "max_tokens": 8192,
+        "top_p": 1.0
+      },
+      "recommended_for": ["deep_reasoning", "critical_code_review", "large_refactor", "multi_agent_planning", "architecture_review", "failure_analysis", "high_stakes_reasoning", "complex_implementation"],
+      "avoid_for": ["routine_low_cost_fallback", "simple_coding", "guided_intake"],
+      "routing_priority": 100,
+      "context_window_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "evidence": [
+        {
+          "source": "Anthropic Models Overview",
+          "url": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+          "note": "Lists claude-opus-4-7 as the most capable generally available Claude model for complex reasoning and agentic coding."
+        }
+      ],
+      "description": "Claude Opus 4.7 — highest-cost escalation for complex reasoning, architecture, critical review, and high-stakes agentic work"
+    }
+  }
+}
