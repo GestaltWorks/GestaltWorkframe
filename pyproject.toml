@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Gestalt Workframe: a multi-mode, brandable chatbot framework with local-LLM-first routing, retrieval grounding, and cloud spillover budgets."
 readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "FSL-1.1-ALv2" }
 dependencies = [
     "aiosqlite>=0.22.1",
     "anthropic>=0.51.0",

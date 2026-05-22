@@ -443,3 +443,26 @@ LinkedIn rolls the API version.
 ```bash
 uv run pytest
 ```
+
+## Licensing
+
+This repository is dual-licensed. The split is documented in
+[NOTICE](NOTICE):
+
+- **Framework** — everything outside `packages/` — is distributed under the
+  [Functional Source License, Version 1.1, ALv2 Future License](LICENSE)
+  (FSL-1.1-ALv2). You can read, run, modify, and redistribute the source
+  for any Permitted Purpose, including internal use, non-commercial
+  education and research, and professional services delivered to a
+  licensee using the Software in compliance with the FSL. Each version
+  automatically converts to Apache License 2.0 two years after it is
+  published. Hosting Gestalt Workframe (or a fork) as a managed/SaaS
+  offering, reselling it, or otherwise offering the same or substantially
+  similar functionality to third parties is a Competing Use and requires a
+  commercial license from Gestalt Works. See [COMMERCIAL.md](COMMERCIAL.md)
+  for the commercial-use policy and implementation-services details.
+- **Connector protocol and reference connectors** under `packages/` are
+  distributed under the [Apache License, Version 2.0](packages/LICENSE) so
+  that integrators can write and ship their own connectors without
+  worrying about FSL compatibility. Each package declares Apache-2.0 in
+  its own `pyproject.toml` and source headers.

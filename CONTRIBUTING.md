@@ -57,3 +57,21 @@ cd web && pnpm install && pnpm lint && pnpm build
 
 Use GitHub issues for bugs, design questions, and feature requests. For
 security-sensitive reports, follow `SECURITY.md` instead.
+
+## Contribution licensing
+
+This repository is dual-licensed (see `NOTICE`). By submitting a
+contribution you agree to license it under the same terms as the
+directory it lands in:
+
+- Contributions to **`packages/`** (connector protocol and reference
+  connectors) are licensed under the Apache License, Version 2.0, per
+  Section 5 of `packages/LICENSE`.
+- Contributions to **the rest of the repository** are licensed under the
+  Functional Source License, Version 1.1, ALv2 Future License, per
+  `LICENSE`.
+
+Do not copy code between the two halves without checking that the source
+license permits it. Apache-2.0 code may flow into the FSL framework
+freely; FSL code may not flow into `packages/` without a separate
+relicensing decision.

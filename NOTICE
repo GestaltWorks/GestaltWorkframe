@@ -1,5 +1,17 @@
 Gestalt Works
 Copyright 2026 Gestalt Works
 
-This product includes software developed by Gestalt Works and made available
-under the Apache License, Version 2.0.
+This repository is dual-licensed.
+
+The framework — everything outside the `packages/` directory, including
+`api/`, `core/`, `kb/`, `llm/`, `mcp_servers/`, `web/`, `deployments/`,
+`docker/`, `docs/`, `scripts/`, `tests/`, and the root configuration files —
+is offered under the Functional Source License, Version 1.1, ALv2 Future
+License (FSL-1.1-ALv2). See `LICENSE` for the full text and `COMMERCIAL.md`
+for the commercial-use policy.
+
+The connector protocol and reference connector implementations in
+`packages/` are offered under the Apache License, Version 2.0. See
+`packages/LICENSE` for the full text. Each package's `pyproject.toml`
+declares Apache-2.0 as its license, and each source file carries an
+Apache-2.0 header.
