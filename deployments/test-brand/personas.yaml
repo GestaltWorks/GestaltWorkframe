@@ -1,0 +1,15 @@
+# Per-mode persona overrides for Northstar Automation Lab.
+# Fields not specified here fall back to the framework default for that mode.
+
+modes:
+  - id: pipeline
+    name: Engagement Advisor
+    description: Explore how Northstar can support your team's operations.
+
+  - id: automator
+    name: Operations Guide
+    description: Get technical help with workflows and internal automation.
+
+  - id: educator
+    name: Learning Guide
+    description: Learn operational automation concepts step by step.

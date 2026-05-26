@@ -16,6 +16,15 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 from core.db import DiscoveryFind, DiscoverySource
 
+def _library_cfg():
+    """Lazy read of LibraryConfig; returns None if unavailable."""
+    try:
+        from core.deployment_config import get_deployment_config
+        return get_deployment_config().library
+    except Exception:
+        return None
+
+
 GITHUB_API = "https://api.github.com"
 DEFAULT_REPO = os.getenv("LIBRARY_PUBLISH_REPO", "")
 DEFAULT_BASE_BRANCH = "main"
@@ -54,9 +63,11 @@ async def publish_find_to_library(
     notes: str = "",
     target_path: str = "",
 ) -> LibraryPublishResult:
-    repo = os.getenv("LIBRARY_PUBLISHER_REPO", DEFAULT_REPO).strip() or DEFAULT_REPO
-    base_branch = os.getenv("LIBRARY_PUBLISHER_BASE_BRANCH", DEFAULT_BASE_BRANCH).strip() or DEFAULT_BASE_BRANCH
-    path = _safe_target_path(target_path or _default_target_path(find))
+    lib = _library_cfg()
+    repo = os.getenv("LIBRARY_PUBLISHER_REPO", (lib.publish_repo if lib else "") or DEFAULT_REPO).strip() or DEFAULT_REPO
+    base_branch = os.getenv("LIBRARY_PUBLISHER_BASE_BRANCH", (lib.publish_base_branch if lib else "") or DEFAULT_BASE_BRANCH).strip() or DEFAULT_BASE_BRANCH
+    target_dir = (lib.publish_target_dir if lib and lib.publish_target_dir else DEFAULT_TARGET_DIR)
+    path = _safe_target_path(target_path or _default_target_path(find, target_dir))
     content = _document_content(find, source, notes=notes)
     token = await _publisher_token()
 
@@ -72,8 +83,9 @@ async def publish_find_to_library(
 
 
 async def delete_library_file(path: str, *, title: str = "discovery reference") -> LibraryDeleteResult:
-    repo = os.getenv("LIBRARY_PUBLISHER_REPO", DEFAULT_REPO).strip() or DEFAULT_REPO
-    base_branch = os.getenv("LIBRARY_PUBLISHER_BASE_BRANCH", DEFAULT_BASE_BRANCH).strip() or DEFAULT_BASE_BRANCH
+    lib = _library_cfg()
+    repo = os.getenv("LIBRARY_PUBLISHER_REPO", (lib.publish_repo if lib else "") or DEFAULT_REPO).strip() or DEFAULT_REPO
+    base_branch = os.getenv("LIBRARY_PUBLISHER_BASE_BRANCH", (lib.publish_base_branch if lib else "") or DEFAULT_BASE_BRANCH).strip() or DEFAULT_BASE_BRANCH
     safe_path = _safe_target_path(path)
     token = await _publisher_token()
     headers = {
@@ -221,8 +233,8 @@ def _document_content(find: DiscoveryFind, source: DiscoverySource, *, notes: st
     )
 
 
-def _default_target_path(find: DiscoveryFind) -> str:
-    return f"{DEFAULT_TARGET_DIR}/{datetime.now(timezone.utc):%Y/%m}/{_slug(find.title)}-{find.id[:8]}.md"
+def _default_target_path(find: DiscoveryFind, target_dir: str = DEFAULT_TARGET_DIR) -> str:
+    return f"{target_dir}/{datetime.now(timezone.utc):%Y/%m}/{_slug(find.title)}-{find.id[:8]}.md"
 
 
 def _safe_target_path(path: str) -> str:

@@ -1,0 +1,160 @@
+# Routing signal vocabulary for Northstar Automation Lab.
+# Non-empty lists replace the framework defaults for that signal group.
+# Omit a key (or leave the list empty) to use the framework default.
+
+learning_signals:
+  - teach
+  - explain
+  - walk me through
+  - lesson
+  - learn
+  - quiz
+  - scenario
+  - socratic
+  - practice
+
+resource_signals:
+  - github
+  - repo
+  - duplicate
+  - copy
+  - sample
+  - example
+  - template
+  - bundle
+  - library
+  - script
+
+implementation_signals:
+  - how do i
+  - how can i
+  - build
+  - create
+  - configure
+  - integrate
+  - connect
+  - api
+  - webhook
+  - jinja
+  - ctx
+  - workflow
+
+trouble_signals:
+  - broken
+  - error
+  - failing
+  - "doesn't work"
+  - not working
+  - debug
+  - troubleshoot
+  - stuck
+  - already tried
+  - wrong
+
+service_signals:
+  - hire
+  - consult
+  - consulting
+  - work with you
+  - bring you in
+  - contact
+  - demo
+  - proposal
+  - scope
+  - build this
+  - build it for
+  - can you build
+  - debug this for me
+  - fix this for me
+  - do this for me
+  - for us
+
+pricing_signals:
+  - pricing
+  - price
+  - cost
+  - rate
+  - contract
+  - terms
+  - retainer
+  - sow
+  - msa
+  - statement of work
+
+discovery_signals:
+  - where to start
+  - what should we automate
+  - worth automating
+  - help us decide
+  - not sure what to automate
+  - how can you help
+  - how do you help
+  - what can you do
+
+confusion_signals:
+  - confused
+  - lost
+  - "don't understand"
+  - do not understand
+  - not following
+  - break that down
+
+urgency_signals:
+  - urgent
+  - production
+  - client
+  - blocked
+  - down
+  - asap
+
+technical_terms:
+  - workflow
+  - bundle
+  - template
+  - ctx
+  - tasks
+  - api
+  - n8n
+  - webhook
+
+build_intent_terms:
+  - i want to build
+  - trying to build
+  - want to build
+  - need to build
+  - how do i build
+  - how do i implement
+  - i want to implement
+  - is there a workflow
+  - is there a bundle
+  - looking for a workflow
+  - need a workflow
+
+direct_service_handoff_terms:
+  - hire
+  - consult
+  - consulting
+  - build this
+  - debug this for me
+  - fix this for me
+  - do this for me
+  - work with you
+  - bring you in
+  - contact
+  - demo
+
+complex_build_phrases:
+  - i want to build
+  - i'm trying to build
+  - trying to build
+  - want to build
+  - need to build
+  - how do i build
+  - how do i implement
+  - i want to implement
+  - need to implement
+  - is there a workflow
+  - is there a bundle
+  - looking for a workflow
+  - need a workflow
+  - how do i automate

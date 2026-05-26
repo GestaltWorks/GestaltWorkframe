@@ -15,6 +15,19 @@ from core.policy import (
 from core.routing_frame import classify_route
 from core.tool_policy import allowed_tools_for_mode, retrieval_tool_for
 
+def _routing_cfg():
+    """Lazy read of RoutingConfig; returns None if unavailable."""
+    try:
+        from core.deployment_config import get_deployment_config
+        return get_deployment_config().routing
+    except Exception:
+        return None
+
+
+def _terms(cfg_list: list[str], default: tuple) -> tuple:
+    return tuple(cfg_list) if cfg_list else default
+
+
 
 # Two keyword sets survive after Phase 2 deletions: TECHNICAL_TERMS gates the
 # retrieval branch in _needs_retrieval; DIRECT_SERVICE_HANDOFF_TERMS gates the
@@ -213,7 +226,9 @@ class Orchestrator:
             return False
         if mode in {ChatMode.AUTOMATOR, ChatMode.EDUCATOR}:
             return True
-        return any(term in message for term in TECHNICAL_TERMS)
+        cfg = _routing_cfg()
+        tech = _terms(cfg.technical_terms if cfg else [], TECHNICAL_TERMS)
+        return any(term in message for term in tech)
 
     def _tool_execution_mode(self, retrieval_required: bool, retrieval_tool: str | None) -> ToolExecutionMode:
         if self.model_tool_loop_enabled and retrieval_required and retrieval_tool:
@@ -263,7 +278,9 @@ class Orchestrator:
             return True
         if tone in {ToneSignal.FRUSTRATED, ToneSignal.URGENT}:
             return True
-        return any(term in message for term in DIRECT_SERVICE_HANDOFF_TERMS)
+        cfg = _routing_cfg()
+        handoff_terms = _terms(cfg.direct_service_handoff_terms if cfg else [], DIRECT_SERVICE_HANDOFF_TERMS)
+        return any(term in message for term in handoff_terms)
 
     def _should_offer_soft_service(self, mode: ChatMode, message: str) -> bool:
         """Bridge offer in Automator/Educator mode when the user is clearly
@@ -277,7 +294,9 @@ class Orchestrator:
             return False  # Service mode already has the harder handoff path.
         if not message:
             return False
-        return any(term in message for term in BUILD_INTENT_TERMS)
+        cfg = _routing_cfg()
+        build_terms = _terms(cfg.build_intent_terms if cfg else [], BUILD_INTENT_TERMS)
+        return any(term in message for term in build_terms)
 
     def _cloud_allowed(self, policy: ResponsePolicy) -> bool:
         if self.cloud_policy.max_cloud_calls_per_turn < 1:
