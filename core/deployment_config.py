@@ -68,6 +68,66 @@ class CurriculumConfig(BaseModel):
     enabled: bool = False
 
 
+
+class RoutingConfig(BaseModel):
+    """Deployment routing signal overrides loaded from routing.yaml.
+
+    Each field is a list of strings.  An empty list means "use the framework
+    default for that signal group".  Deployments only need to override the
+    groups whose vocabulary differs from the framework defaults.
+    """
+
+    small_talk: list[str] = Field(default_factory=list)
+    learning_signals: list[str] = Field(default_factory=list)
+    resource_signals: list[str] = Field(default_factory=list)
+    implementation_signals: list[str] = Field(default_factory=list)
+    trouble_signals: list[str] = Field(default_factory=list)
+    service_signals: list[str] = Field(default_factory=list)
+    pricing_signals: list[str] = Field(default_factory=list)
+    discovery_signals: list[str] = Field(default_factory=list)
+    confusion_signals: list[str] = Field(default_factory=list)
+    urgency_signals: list[str] = Field(default_factory=list)
+    technical_terms: list[str] = Field(default_factory=list)
+    build_intent_terms: list[str] = Field(default_factory=list)
+    direct_service_handoff_terms: list[str] = Field(default_factory=list)
+    complex_build_phrases: list[str] = Field(default_factory=list)
+
+
+class PersonaModeConfig(BaseModel):
+    """Per-mode persona override entry in personas.yaml.
+
+    Only non-empty fields override the framework default.
+    ``id`` is the only required field.
+    """
+
+    id: str
+    name: str = ""
+    description: str = ""
+    system_prompt: str = ""
+    allowed_tools: list[str] = Field(default_factory=list)
+    force_secondary: bool = False
+
+
+class PersonasConfig(BaseModel):
+    """Deployment personas override loaded from personas.yaml."""
+
+    modes: list[PersonaModeConfig] = Field(default_factory=list)
+
+
+class LibraryConfig(BaseModel):
+    """Deployment library corpus configuration loaded from library.yaml."""
+
+    library_id: str = ""
+    display_name: str = ""
+    public_url: str = ""
+    repo_url: str = ""
+    publish_repo: str = ""
+    publish_base_branch: str = "main"
+    publish_target_dir: str = "discovery/approved"
+    watchlist_seed_module: str = ""
+    topic_taxonomy_path: str = ""
+
+
 class DeploymentConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -83,6 +143,9 @@ class DeploymentConfig(BaseModel):
     newsletter: NewsletterConfig = Field(default_factory=NewsletterConfig)
     discovery: DiscoveryConfig = Field(default_factory=DiscoveryConfig)
     curriculum: CurriculumConfig = Field(default_factory=CurriculumConfig)
+    routing: RoutingConfig = Field(default_factory=RoutingConfig)
+    personas: PersonasConfig = Field(default_factory=PersonasConfig)
+    library: LibraryConfig = Field(default_factory=LibraryConfig)
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -130,6 +193,9 @@ def _load_cached(deployment_id: str) -> DeploymentConfig:
     data["newsletter"] = _yaml(root / "newsletter.yaml", {})
     data["discovery"] = _yaml(root / "discovery.yaml", {})
     data["curriculum"] = _yaml(root / "curriculum.yaml", {})
+    data["routing"] = _yaml(root / "routing.yaml", {})
+    data["personas"] = _yaml(root / "personas.yaml", {})
+    data["library"] = _yaml(root / "library.yaml", {})
     return DeploymentConfig(**data)
 
 

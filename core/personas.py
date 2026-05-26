@@ -156,9 +156,40 @@ PERSONAS = {
 }
 PERSONAS["sales"] = PIPELINE_PERSONA
 
+def _persona_override(mode_id: str):
+    """Return the PersonaModeConfig for mode_id from deployment config, or None."""
+    try:
+        from core.deployment_config import get_deployment_config
+        modes = get_deployment_config().personas.modes
+        return next((m for m in modes if m.id == mode_id), None)
+    except Exception:
+        return None
+
+
 def get_persona(mode_id: str) -> Persona:
-    persona = PERSONAS.get(mode_id, AUTOMATOR_PERSONA)
+    base = PERSONAS.get(mode_id, AUTOMATOR_PERSONA)
     identity = current_bot_identity()
-    if identity == DEFAULT_BOT_IDENTITY:
-        return persona
-    return persona.model_copy(update={"system_prompt": persona.system_prompt.replace(DEFAULT_BOT_IDENTITY, identity, 1)})
+    override = _persona_override(mode_id)
+
+    updates: dict = {}
+
+    if override:
+        if override.name:
+            updates["name"] = override.name
+        if override.description:
+            updates["description"] = override.description
+        if override.allowed_tools:
+            updates["allowed_tools"] = override.allowed_tools
+        updates["force_secondary"] = override.force_secondary
+        if override.system_prompt:
+            # Full system_prompt provided — use it, still swapping identity preamble
+            prompt = override.system_prompt
+            if identity != DEFAULT_BOT_IDENTITY:
+                prompt = prompt.replace(DEFAULT_BOT_IDENTITY, identity, 1)
+            updates["system_prompt"] = prompt
+        elif identity != DEFAULT_BOT_IDENTITY:
+            updates["system_prompt"] = base.system_prompt.replace(DEFAULT_BOT_IDENTITY, identity, 1)
+    elif identity != DEFAULT_BOT_IDENTITY:
+        updates["system_prompt"] = base.system_prompt.replace(DEFAULT_BOT_IDENTITY, identity, 1)
+
+    return base.model_copy(update=updates) if updates else base

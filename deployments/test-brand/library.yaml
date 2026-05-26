@@ -1,0 +1,11 @@
+# Library corpus configuration for Northstar Automation Lab.
+
+library_id: northstar-sample
+display_name: Northstar Knowledge Library
+public_url: https://northstar.example/library
+repo_url: https://github.com/example/northstar-content
+publish_repo: ""
+publish_base_branch: main
+publish_target_dir: discovery/approved
+watchlist_seed_module: ""
+topic_taxonomy_path: ""

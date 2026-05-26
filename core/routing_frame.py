@@ -1,11 +1,11 @@
 from core.policy import AudienceSegment, ChatMode, OutputShape, RouteFrame, SearchPlan, ToneSignal, UserIntent, UserNeed
 
 
-SMALL_TALK = {"hi", "hello", "hey", "yo", "test", "thanks", "thank you"}
+SMALL_TALK: frozenset[str] = frozenset({"hi", "hello", "hey", "yo", "test", "thanks", "thank you"})
 LEARNING_SIGNALS = ("teach", "explain", "walk me through", "lesson", "learn", "quiz", "scenario", "socratic", "practice")
 RESOURCE_SIGNALS = ("github", "repo", "duplicate", "copy", "sample", "example", "template", "bundle", "library", "script")
 IMPLEMENTATION_SIGNALS = ("how do i", "how can i", "build", "create", "configure", "integrate", "connect", "api", "webhook", "jinja", "ctx", "workflow")
-TROUBLE_SIGNALS = ("broken", "error", "failing", "doesn't work", "not working", "debug", "troubleshoot", "stuck", "already tried", "wrong")
+TROUBLE_SIGNALS = ("broken", "error", "failing", "doesn\'t work", "not working", "debug", "troubleshoot", "stuck", "already tried", "wrong")
 SERVICE_SIGNALS = (
     "hire", "consult", "consulting", "work with you", "bring you in", "contact", "demo", "proposal", "scope",
     "build this", "build it for", "can you build", "debug this for me", "fix this for me", "do this for me", "for us",
@@ -16,24 +16,78 @@ DISCOVERY_SIGNALS = (
     "how can you help", "how do you help", "what can you do",
 )
 DOMAIN_SIGNALS = IMPLEMENTATION_SIGNALS + RESOURCE_SIGNALS + SERVICE_SIGNALS + PRICING_SIGNALS + DISCOVERY_SIGNALS + LEARNING_SIGNALS + ("automation", "automator", "security", "engineer", "student")
-CONFUSION_SIGNALS = ("confused", "lost", "don't understand", "do not understand", "not following", "break that down")
+CONFUSION_SIGNALS = ("confused", "lost", "don\'t understand", "do not understand", "not following", "break that down")
 URGENCY_SIGNALS = ("urgent", "production", "client", "blocked", "down", "asap")
 
 
+# ---------------------------------------------------------------------------
+# Deployment-config signal resolution
+# ---------------------------------------------------------------------------
+
+def _routing_cfg():
+    """Return the active RoutingConfig or None if unavailable."""
+    try:
+        from core.deployment_config import get_deployment_config  # lazy — avoids circular import
+        return get_deployment_config().routing
+    except Exception:
+        return None
+
+
+class _Signals:
+    """Holds resolved signal sets for one classify_route call.
+
+    When the deployment config has a non-empty list for a group, that list
+    wins.  Otherwise the module-level hardcoded default is used.
+    """
+
+    __slots__ = (
+        "small_talk", "learning", "resource", "implementation", "trouble",
+        "service", "pricing", "discovery", "confusion", "urgency", "domain",
+        "complex_build",
+    )
+
+    def __init__(self, cfg) -> None:
+        def _s(lst, default: frozenset) -> frozenset:
+            return frozenset(lst) if lst else default
+
+        def _t(lst, default: tuple) -> tuple:
+            return tuple(lst) if lst else default
+
+        self.small_talk    = _s(cfg.small_talk if cfg else [],                   SMALL_TALK)
+        self.learning      = _t(cfg.learning_signals if cfg else [],              LEARNING_SIGNALS)
+        self.resource      = _t(cfg.resource_signals if cfg else [],              RESOURCE_SIGNALS)
+        self.implementation = _t(cfg.implementation_signals if cfg else [],       IMPLEMENTATION_SIGNALS)
+        self.trouble       = _t(cfg.trouble_signals if cfg else [],               TROUBLE_SIGNALS)
+        self.service       = _t(cfg.service_signals if cfg else [],               SERVICE_SIGNALS)
+        self.pricing       = _t(cfg.pricing_signals if cfg else [],               PRICING_SIGNALS)
+        self.discovery     = _t(cfg.discovery_signals if cfg else [],             DISCOVERY_SIGNALS)
+        self.confusion     = _t(cfg.confusion_signals if cfg else [],             CONFUSION_SIGNALS)
+        self.urgency       = _t(cfg.urgency_signals if cfg else [],               URGENCY_SIGNALS)
+        self.complex_build = _t(cfg.complex_build_phrases if cfg else [],         _COMPLEX_BUILD_PHRASES)
+        # domain is the union of component signals + a few fixed audience terms
+        self.domain = (
+            self.implementation + self.resource + self.service + self.pricing
+            + self.discovery + self.learning
+            + ("automation", "automator", "security", "engineer", "student")
+        )
+
+
 def classify_route(starting_mode: str, message: str, intake: dict[str, str] | None = None) -> tuple[RouteFrame, UserIntent, ToneSignal]:
+    cfg = _routing_cfg()
+    sig = _Signals(cfg)
     text = _normalize(message)
     intake_text = _normalize(" ".join((intake or {}).values()))
     combined = f"{text} {intake_text}".strip()
 
-    need = _need(text, combined)
+    need = _need(text, combined, sig)
     audience = _audience(starting_mode, need, combined)
-    tone = _tone(combined)
+    tone = _tone(combined, sig)
     frame = RouteFrame(
         audience=audience,
         need=need,
         output_shape=_output_shape(need),
         search_plan=_search_plan(need),
-        task=_task(need, audience, tone, combined),
+        task=_task(need, audience, tone, combined, sig),
     )
     return frame, _intent(need), tone
 
@@ -42,26 +96,26 @@ def _normalize(value: str) -> str:
     return " ".join(value.strip().lower().replace(",", "").rstrip(".!?").split())
 
 
-def _need(message: str, combined: str) -> UserNeed:
-    if message in SMALL_TALK and not _has(combined, DOMAIN_SIGNALS):
+def _need(message: str, combined: str, sig: "_Signals") -> UserNeed:
+    if message in sig.small_talk and not _has(combined, sig.domain):
         return UserNeed.SMALL_TALK
-    if _has(combined, PRICING_SIGNALS):
+    if _has(combined, sig.pricing):
         return UserNeed.PRICING_TERMS
-    if _has(message, SERVICE_SIGNALS):
+    if _has(message, sig.service):
         return UserNeed.PROJECT_INTAKE
-    if _has(combined, DISCOVERY_SIGNALS) or _has(combined, SERVICE_SIGNALS):
+    if _has(combined, sig.discovery) or _has(combined, sig.service):
         return UserNeed.SERVICE_DISCOVERY
-    if _has(combined, TROUBLE_SIGNALS):
+    if _has(combined, sig.trouble):
         return UserNeed.TROUBLESHOOTING
-    if _has(combined, LEARNING_SIGNALS):
+    if _has(combined, sig.learning):
         return UserNeed.EDUCATION
-    if _has(combined, RESOURCE_SIGNALS):
+    if _has(combined, sig.resource):
         return UserNeed.RESOURCE_LOOKUP
-    if _has(combined, IMPLEMENTATION_SIGNALS):
+    if _has(combined, sig.implementation):
         return UserNeed.IMPLEMENTATION_HELP
-    if _has(combined, CONFUSION_SIGNALS):
+    if _has(combined, sig.confusion):
         return UserNeed.EDUCATION
-    if len(message.split()) >= 4 and not _has(combined, DOMAIN_SIGNALS):
+    if len(message.split()) >= 4 and not _has(combined, sig.domain):
         return UserNeed.OUT_OF_SCOPE
     return UserNeed.UNKNOWN
 
@@ -80,14 +134,14 @@ def _audience(starting_mode: str, need: UserNeed, combined: str) -> AudienceSegm
     return AudienceSegment.UNKNOWN
 
 
-def _tone(combined: str) -> ToneSignal:
-    if _has(combined, URGENCY_SIGNALS):
+def _tone(combined: str, sig: "_Signals") -> ToneSignal:
+    if _has(combined, sig.urgency):
         return ToneSignal.URGENT
-    if _has(combined, TROUBLE_SIGNALS):
+    if _has(combined, sig.trouble):
         return ToneSignal.FRUSTRATED
-    if _has(combined, DISCOVERY_SIGNALS):
+    if _has(combined, sig.discovery):
         return ToneSignal.HESITANT
-    if _has(combined, CONFUSION_SIGNALS):
+    if _has(combined, sig.confusion):
         return ToneSignal.CONFUSED
     return ToneSignal.NEUTRAL
 
@@ -167,7 +221,7 @@ _COMPLEX_BUILD_PHRASES = (
 )
 
 
-def _task(need: UserNeed, audience: AudienceSegment, tone: ToneSignal, combined: str) -> str:
+def _task(need: UserNeed, audience: AudienceSegment, tone: ToneSignal, combined: str, sig: "_Signals") -> str:
     if need == UserNeed.RESOURCE_LOOKUP:
         return "workflow_examples"
     if need == UserNeed.TROUBLESHOOTING:
@@ -178,7 +232,7 @@ def _task(need: UserNeed, audience: AudienceSegment, tone: ToneSignal, combined:
         # Build-intent signal: elevate to complex_implementation so the router's
         # task-fit score picks a model genuinely good at code generation and
         # citation discipline, not the next-best local 7-8B available.
-        if any(phrase in combined for phrase in _COMPLEX_BUILD_PHRASES):
+        if any(phrase in combined for phrase in sig.complex_build):
             return "complex_implementation"
         return "implementation_help"
     if need == UserNeed.EDUCATION:
@@ -188,5 +242,5 @@ def _task(need: UserNeed, audience: AudienceSegment, tone: ToneSignal, combined:
     return "routine_chat"
 
 
-def _has(text: str, terms: tuple[str, ...]) -> bool:
+def _has(text: str, terms) -> bool:
     return any(term in text for term in terms)
