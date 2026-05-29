@@ -120,7 +120,7 @@
         "max_tokens": 8192,
         "top_p": 1.0
       },
-      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "workflow_debugging", "workflow_examples", "jinja_help", "implementation_help", "complex_implementation", "socratic_tutor", "high_value_service_inquiry"],
+      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "complex_implementation", "high_value_service_inquiry"],
       "avoid_for": ["routine_low_cost_fallback"],
       "routing_priority": 80,
       "context_window_tokens": 200000,
@@ -142,7 +142,7 @@
         "max_tokens": 8192,
         "top_p": 1.0
       },
-      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "workflow_debugging", "workflow_examples", "jinja_help", "implementation_help", "complex_implementation", "socratic_tutor", "long_context_reasoning", "frontend_design", "high_value_service_inquiry"],
+      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "complex_implementation", "long_context_reasoning", "frontend_design", "high_value_service_inquiry"],
       "avoid_for": ["routine_low_cost_fallback"],
       "routing_priority": 95,
       "context_window_tokens": 1000000,

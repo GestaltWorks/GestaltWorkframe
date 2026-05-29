@@ -1,10 +1,15 @@
-"""Phase D3: best-model-for-query routing tests.
+"""Phase D3 (value-lean calibration): best-model-for-query routing tests.
 
-The user's directive: "prefer best model for the query, then bounce if
-that model isn't available." Three coordinated changes verify this:
+The original D3 directive was "prefer best model for the query, then bounce
+if that model isn't available." The value-lean calibration refines it: best
+fit still wins, but adequate local/low-cost routes take ties so routine
+public traffic stays local while genuinely hard turns escalate. Coordinated
+changes verify this:
 
-1. best_value strategy no longer adds a cost-tier bonus. Within an
-   eligible route set, task fit and routing_priority alone decide.
+1. best_value applies a modest value lean toward cheaper tiers
+   (local +120, low_cost +40, premium +0). Task fit still dominates
+   (+1000 recommended_for, -2000 avoid_for), so a premium-only task match
+   outranks the lean and escalates a hard turn.
 2. Response policy defaults to LOCAL_THEN_CLAUDE_IF_HIGH_VALUE whenever
    claude is enabled (was previously gated to handoff/urgent only),
    so Sonnet is on the menu by default.
@@ -29,11 +34,12 @@ from core.router import ROUTE_COST_ADJUSTMENTS
 from core.routing_frame import classify_route
 
 
-# ---- Change 1: best_value is cost-tier-neutral ----------------------------
+# ---- Change 1: best_value leans toward cheaper tiers ----------------------
 
-def test_best_value_cost_adjustments_are_all_zero():
-    """The bias is gone. Task fit and routing_priority alone decide."""
-    assert ROUTE_COST_ADJUSTMENTS["best_value"] == {"local": 0, "low_cost": 0, "premium": 0}
+def test_best_value_applies_value_lean_toward_cheaper_tiers():
+    """A modest cost-tier lean (local > low_cost > premium) breaks ties for
+    cheaper-but-adequate routes. Task fit (+1000/-2000) still dominates."""
+    assert ROUTE_COST_ADJUSTMENTS["best_value"] == {"local": 120, "low_cost": 40, "premium": 0}
 
 
 def test_other_strategies_still_express_a_lean():
@@ -105,9 +111,9 @@ def test_build_intent_elevates_to_complex_implementation_task():
 
 
 def test_jinja_help_still_wins_over_complex_implementation():
-    """Even with build intent, Jinja/ctx/tasks specifics keep the jinja_help tag.
-    Multiple models recommend that task; cost-tier-neutral best_value picks
-    by priority (Sonnet beats Qwen Coder)."""
+    """Even with build intent, Jinja/ctx/tasks specifics keep the jinja_help
+    tag. The more specific routine tag wins over complex_implementation, so the
+    turn routes to a local/practitioner model rather than premium cloud."""
     frame, _intent, _tone = classify_route(
         starting_mode="automator",
         message="i want to build a jinja filter that lowercases",

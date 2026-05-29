@@ -290,11 +290,13 @@ async def test_router_tries_next_local_route_before_cloud(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_best_value_no_longer_biases_local_without_task_match(tmp_path):
-    """Phase D3: best_value used to add +150 to local cost_tier as a soft
-    floor for routine traffic. The user explicitly asked for "best model
-    for the query" so this bias is gone. Without a task signal, routing
-    priority alone decides - cloud with higher priority wins.
+async def test_best_value_leans_local_without_task_match(tmp_path):
+    """Value-lean calibration: best_value adds a modest cost-tier lean
+    (local +120, low_cost +40, premium +0). Without a task-fit signal the
+    lean breaks the tie for the cheaper-but-adequate route, so a routine turn
+    stays local even when a higher-priority cloud route is eligible. Task fit
+    still dominates the lean - see
+    test_best_value_can_choose_task_matched_cloud_when_policy_allows.
     """
     local = _make_provider(response={"content": "local"})
     cloud = _make_provider(response={"content": "cloud", "usage": {"input_tokens": 1, "output_tokens": 1}})
@@ -307,8 +309,8 @@ async def test_best_value_no_longer_biases_local_without_task_match(tmp_path):
         ],
     )
     assert router.routing_strategy == "best_value"
-    # Phase D3: no cost-tier bonus on best_value. Pure routing_priority decides.
-    assert router._route_score(router.routes[1], None) > router._route_score(router.routes[0], None)
+    # local 40+120=160 outranks low_cost 60+40=100 with no task signal.
+    assert router._route_score(router.routes[0], None) > router._route_score(router.routes[1], None)
 
     result = await router.chat(
         [{"role": "user", "content": "hi"}],
@@ -317,10 +319,10 @@ async def test_best_value_no_longer_biases_local_without_task_match(tmp_path):
         session_id="s1",
     )
 
-    # Higher-priority cloud route wins under best_value with no task fit signal.
-    assert result["content"] == "cloud"
-    cloud.chat.assert_called_once()
-    local.chat.assert_not_called()
+    # Value lean keeps a routine, task-less turn on the cheaper local route.
+    assert result["content"] == "local"
+    local.chat.assert_called_once()
+    cloud.chat.assert_not_called()
 
 
 @pytest.mark.asyncio

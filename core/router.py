@@ -18,17 +18,20 @@ Message = dict[str, Any]
 ToolSpec = dict[str, Any]
 
 ROUTING_STRATEGIES = {"best_value", "prefer_local", "prefer_cloud_quality", "local_only", "cloud_only"}
-# Phase D3: best_value means "pick the best model for the query" - no cost-tier
-# thumb on the scale. Task fit (+1000 on recommended_for, -2000 on avoid_for),
-# per-profile routing_priority, and runtime health adjustments are the only
-# inputs. Cloud spend safety is enforced by the CloudSpendPolicy USD/call caps,
-# not by biasing the router toward local.
+# best_value ranks every eligible route by task fit plus a modest value lean
+# toward cheaper tiers: the best-fitting model wins, but local/low-cost routes
+# take ties and near-ties when they are adequate. Task fit dominates (+1000 on
+# recommended_for, -2000 on avoid_for), so a premium-only task match
+# (complex_implementation, code_review, high_value_service_inquiry, ...) still
+# outranks the local lean and genuinely hard turns escalate. The lean only
+# orders routes; cloud spend safety is enforced separately by the
+# CloudSpendPolicy USD/call caps.
 #
-# The other strategies are operator-chosen deviations from "best fit": local_only
-# and cloud_only filter route families entirely; prefer_local and prefer_cloud_quality
-# still bias within-family ordering for operators who want that explicit lean.
+# prefer_local and prefer_cloud_quality apply a stronger within-family lean for
+# operators who want an explicit tilt; local_only and cloud_only filter route
+# families entirely.
 ROUTE_COST_ADJUSTMENTS = {
-    "best_value": {"local": 0, "low_cost": 0, "premium": 0},
+    "best_value": {"local": 120, "low_cost": 40, "premium": 0},
     "prefer_local": {"local": 300, "low_cost": 75, "premium": 0},
     "prefer_cloud_quality": {"local": 0, "low_cost": 250, "premium": 300},
     "local_only": {"local": 0, "low_cost": 0, "premium": 0},
