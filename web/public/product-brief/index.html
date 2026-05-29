@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Gestalt Workframe Platform Brief</title>
+  <meta name="description" content="Gestalt Workframe is a cost-aware AI orchestration layer: per-turn model routing across local and cloud providers, retrieval-grounded answers with citations, guided intake, persona routing, connectors, deployment bundles, and operator-controlled cloud spend caps." />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <style>
+    :root{--dark:#242128;--black:#151318;--gold:#D4BF91;--gold2:#DCD077;--sage:#566B5B;--white:#F5F5F5;--muted:rgba(245,245,245,.68);--line:rgba(212,191,145,.26)}
+    @page{size:11in 8.5in;margin:0}*{box-sizing:border-box}html,body{margin:0;background:#111;color:var(--white);font-family:Inter,Arial,sans-serif}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}a{color:inherit}.download{position:fixed;right:22px;top:18px;z-index:20;border:1px solid rgba(212,191,145,.48);border-radius:999px;background:rgba(20,18,24,.86);color:#DCD077;padding:10px 14px;text-decoration:none;font-weight:800;font-size:14px}.page{width:11in;height:8.5in;page-break-after:always;position:relative;overflow:hidden;background:radial-gradient(circle at 78% 10%,rgba(220,208,119,.17),transparent 32%),linear-gradient(135deg,#1a171f 0%,#242128 58%,#3b4b40 100%);padding:.54in}.page.light{background:linear-gradient(135deg,#f5f5f5,#eee9dd);color:#242128}.mark{position:absolute;right:-.5in;bottom:-.55in;width:3.2in;height:3.2in;border:1px solid rgba(212,191,145,.22);border-radius:50%}.wordmark{font:800 .22in Rajdhani,Arial,sans-serif;letter-spacing:.32em;color:var(--gold);text-transform:uppercase}.eyebrow{font:700 .13in Rajdhani,Arial,sans-serif;letter-spacing:.26em;text-transform:uppercase;color:var(--gold)}h1,h2,h3{font-family:Rajdhani,Arial,sans-serif;line-height:1.02;margin:0}h1{font-size:.7in;max-width:8in;margin:.28in 0 .22in}h2{font-size:.43in;margin:.08in 0 .18in}h3{font-size:.22in;color:var(--gold);margin:0 0 .08in}p{font-size:.155in;line-height:1.46;margin:.08in 0;color:var(--muted)}.light p{color:#56505b}.lead{font-size:.2in;max-width:7.6in}.row{display:grid;gap:.22in}.cols2{grid-template-columns:1fr 1fr}.cols3{grid-template-columns:repeat(3,1fr)}.card{background:rgba(20,18,24,.72);border:1px solid var(--line);border-radius:.18in;padding:.22in;box-shadow:0 .18in .45in rgba(0,0,0,.22)}.light .card{background:#fff;border-color:rgba(36,33,40,.14);box-shadow:none}.pill{display:inline-block;border:1px solid rgba(212,191,145,.42);border-radius:99px;color:var(--gold2);padding:.09in .14in;margin:.05in .05in 0 0;font-weight:800;font-size:.12in}.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:.12in;margin-top:.24in}.flow .card{min-height:1.85in;padding:.16in}.num{font:700 .18in Rajdhani,Arial,sans-serif;color:var(--sage);letter-spacing:.16em}.footer{position:absolute;left:.54in;right:.54in;bottom:.32in;display:flex;justify-content:space-between;color:rgba(245,245,245,.46);font-size:.11in}.light .footer{color:#746e78}.contact{font:700 .2in Rajdhani,Arial,sans-serif;color:var(--gold2);letter-spacing:.02em}.bigline{font:700 .54in Rajdhani,Arial,sans-serif;line-height:1.04;margin:.18in 0;color:var(--white)}.light .bigline{color:#242128}.rule{height:1px;background:rgba(212,191,145,.32);margin:.2in 0}.stat{font:700 .34in Rajdhani,Arial,sans-serif;color:var(--gold2)}.repo{font:700 .2in 'Geist Mono',Consolas,monospace;color:var(--gold2);letter-spacing:.01em;word-break:break-all}.kicker{color:var(--gold);font-weight:800}.note{font-size:.12in;color:var(--muted)}.light .note{color:#5f5864}.small{font-size:.13in}@media print{.download{display:none}}
+  </style>
+</head>
+<body>
+  <a class="download" href="https://github.com/GestaltWorks/GestaltWorkframe" target="_blank" rel="noopener">View on GitHub</a>
+
+  <section class="page">
+    <div class="mark"></div>
+    <p class="wordmark">Gestalt Workframe</p>
+    <p class="eyebrow" style="margin-top:.18in">Platform brief</p>
+    <h1>Cost-aware orchestration. Grounded answers. Local-first by default.</h1>
+    <p class="lead">AI orchestration that keeps spend predictable, answers grounded in your own knowledge, and your brand on the front. The backend picks the right model for each turn. Routine work stays on small local models. Premium cloud is reserved for hard judgment. A guided terminal, persona routing, connectors, and per-deployment bundles ship with it.</p>
+    <div style="margin-top:.22in">
+      <span class="pill">Best-value model routing</span>
+      <span class="pill">Operator-controlled spend caps</span>
+      <span class="pill">RAG knowledge layer with citations</span>
+      <span class="pill">Connector protocol</span>
+      <span class="pill">Guided intake + persona routing</span>
+      <span class="pill">Deployment bundles</span>
+    </div>
+    <div class="footer"><span>github.com/GestaltWorks/GestaltWorkframe</span><span>FSL-1.1-ALv2 framework · Apache-2.0 connectors</span></div>
+  </section>
+
+  <section class="page light">
+    <p class="eyebrow" style="color:#566B5B">Operating layer</p>
+    <h2>The public surface is small. The operating layer is not.</h2>
+    <p class="lead" style="color:#4d4752">A visitor sees a terminal and a library. Underneath, five layers do the work: pull in your sources, build a grounded knowledge base, route each turn to the right model, enforce privacy and spend policy, and publish only what operators approve.</p>
+    <div class="flow">
+      <div class="card"><div class="num">01</div><h3>Sources</h3><p>Filesystem, S3, ITGlue, Hudu, Microsoft 365, GitHub, RSS, and curated web feeds.</p></div>
+      <div class="card"><div class="num">02</div><h3>Connectors</h3><p>One Document schema. Scoped credentials. Redaction pipeline. Provenance attached.</p></div>
+      <div class="card"><div class="num">03</div><h3>Knowledge</h3><p>Vector index, browsable library pages, source-controlled corpus, citations, and reusable training material.</p></div>
+      <div class="card"><div class="num">04</div><h3>Routing</h3><p>Intent frame, retrieved context, model profile, local or cloud choice, cost, risk, and policy.</p></div>
+      <div class="card"><div class="num">05</div><h3>Outputs</h3><p>Grounded answers, service intake, contact handoff, newsletter, library, lessons, and labs.</p></div>
+    </div>
+    <div class="footer"><span>Orchestration layer</span><span>source → connector → retrieval → route → publish</span></div>
+  </section>
+
+  <section class="page">
+    <p class="eyebrow">Public experience</p>
+    <h2>Guided intake on top. A maintained library underneath.</h2>
+    <div class="row cols2" style="margin-top:.18in">
+      <div class="card">
+        <h3>Guided terminal</h3>
+        <p>Not an open chatbot. Visitors start with a guided intake and land in one of three personas: Service Inquiry, Practitioner, or Educator. The router shifts modes mid-conversation when intent changes.</p>
+        <p class="note">Off-scope requests redirect to your configured paths instead of burning model budget.</p>
+      </div>
+      <div class="card">
+        <h3>Knowledge library</h3>
+        <p>Your knowledge stays browsable, cited, and indexable. Patterns, schemas, runbooks, and examples live as library pages, not buried in chat transcripts. Search engines and AI crawlers see them too.</p>
+        <p class="note">Every grounded answer is graded before it streams. Unsupported claims get replaced, not warning-stamped.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Public surfaces</span><span>guided terminal · grounded library · service handoff</span></div>
+  </section>
+
+  <section class="page light">
+    <p class="eyebrow" style="color:#566B5B">Admin control plane</p>
+    <h2>Discovery, routing, and budgets stay under operator control.</h2>
+    <div class="row cols2" style="margin-top:.18in">
+      <div class="card">
+        <h3 style="color:#3b4b40">Discovery Workbench</h3>
+        <p>One review queue, fed by every source you watch. Operators feature strong signals, queue newsletter items, add custom finds, and dismiss noise. GitHub, RSS, web diffs, subreddits, and saved searches all land in the same place, fetched server-side behind SSRF guards.</p>
+      </div>
+      <div class="card">
+        <h3 style="color:#3b4b40">Health and Policy</h3>
+        <p>Provider health, route diagnostics, and budgets on one token-gated page. Flip routing strategy at runtime: best value, prefer local, prefer cloud quality, local only, or cloud only. Per-turn, per-session, daily, and monthly caps let cloud spend degrade gracefully instead of running away.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Human-in-the-loop curation</span><span>discovery · health · policy · handoff · budgets</span></div>
+  </section>
+
+  <section class="page">
+    <p class="eyebrow">Security model</p>
+    <h2>Trust boundaries built for operator-audit.</h2>
+    <p class="lead">Every input that crosses the public surface is treated as untrusted. The backend owns routing, tool access, credentials, retrieval, and spend so each boundary that matters can be audited.</p>
+    <div class="flow">
+      <div class="card"><div class="num">01</div><h3>Trust boundaries</h3><p>Browser input, intake answers, KB chunks, tool results, and model output are all untrusted. The backend owns routing, tool access, and provider selection.</p></div>
+      <div class="card"><div class="num">02</div><h3>Backend-owned tools</h3><p>No exec, no shell, no filesystem for the model. Provider tools are whitelisted per mode, Pydantic-validated, bounded, and quarantined on result reinjection.</p></div>
+      <div class="card"><div class="num">03</div><h3>Agent identities</h3><p>Connectors run on scoped, short-lived server-side credentials. No long-lived tokens in prompts, KB chunks, logs, or browser state.</p></div>
+      <div class="card"><div class="num">04</div><h3>Privacy-gated routing</h3><p>Context flagged <code>cloud_llm_eligible=false</code> blocks cloud providers. If local inference is unavailable the router fails closed with a readable error instead of leaking to a cloud route.</p></div>
+      <div class="card"><div class="num">05</div><h3>Public-surface controls</h3><p>Same-origin checks, route body limits, IP and session abuse budgets, SSRF guards, redacted public health, generic stream errors, and text-only terminal rendering.</p></div>
+    </div>
+    <div class="footer"><span>Untrusted in. Trustworthy out.</span><span>boundaries · validation · scoping · failure-mode design</span></div>
+  </section>
+
+  <section class="page light">
+    <p class="eyebrow" style="color:#566B5B">Architecture</p>
+    <h2>Same engine. Your bundle.</h2>
+    <div class="row cols3" style="margin-top:.18in">
+      <div class="card">
+        <h3 style="color:#3b4b40">Three-container deploy</h3>
+        <p>FastAPI, a static Next.js frontend, and an nginx proxy behind one origin. <code>docker compose up</code> brings the stack online on port 8080 with persistent storage.</p>
+        <p class="note">A bundled generic deployment lets evaluators walk the whole product before configuring anything.</p>
+      </div>
+      <div class="card">
+        <h3 style="color:#3b4b40">Connector ecosystem</h3>
+        <p>One Document schema, scoped credentials, and a redaction pipeline behind a single connector contract. Reference connectors ship for filesystem, S3, ITGlue, Hudu, and Microsoft 365 files. Each is its own installable Python package.</p>
+        <p class="note">Connectors are Apache-2.0 so integrators can build and ship their own without license friction.</p>
+      </div>
+      <div class="card">
+        <h3 style="color:#3b4b40">Deployment bundles</h3>
+        <p>Brand, copy, intake, connectors, redaction, newsletter, discovery, and curriculum settings live in one folder per deployment. Set <code>DEPLOYMENT_ID</code> to switch. Re-purposing the same engine for a new audience is a configuration change, not a fork.</p>
+      </div>
+    </div>
+    <div class="rule"></div>
+    <div class="row cols2">
+      <div>
+        <p class="lead" style="color:#3b4b40">Provider abstraction with best-value routing.</p>
+        <p>Local LLM by default on any OpenAI-compatible endpoint. Operator-controlled cloud spillover for the rest. Model profiles capture task fit, status, and limits so adding or swapping a route is a config change, not a code change.</p>
+      </div>
+      <div>
+        <p><span class="stat">≥ 70%</span><br /><span class="small" style="color:#3b4b40">target local-LLM serve rate under normal load.</span></p>
+        <p><span class="stat">0 → cap</span><br /><span class="small" style="color:#3b4b40">cloud spend defaults to zero. Caps are per-turn, per-session, per-day, and per-month, with USD ceilings.</span></p>
+      </div>
+    </div>
+    <div class="footer"><span>Configuration over forks</span><span>docker · connectors · bundles · profiles · budgets</span></div>
+  </section>
+
+  <section class="page">
+    <p class="eyebrow">Source, license, start</p>
+    <div class="bigline">Open the code.<br />Pick how you adopt.</div>
+    <p class="lead">Gestalt Workframe is dual-licensed and shipped on GitHub. Run the bundled generic deployment offline and walk the whole product before committing to anything.</p>
+    <div class="row cols3" style="margin-top:.22in">
+      <div class="card">
+        <h3>Framework &middot; FSL-1.1-ALv2</h3>
+        <p>Everything outside <code>packages/</code> is FSL-1.1. Read, run, modify, and redistribute for your own use, internal services, and customer engagements. Each version auto-converts to Apache-2.0 two years after release.</p>
+      </div>
+      <div class="card">
+        <h3>Connectors &middot; Apache-2.0</h3>
+        <p>Everything under <code>packages/</code> is Apache-2.0. Build your own connectors against the schema and ship them without inheriting framework license terms.</p>
+      </div>
+      <div class="card">
+        <h3>Commercial license</h3>
+        <p>Hosting Gestalt Workframe as a managed or SaaS offering, reselling it, or competing with it requires a commercial license. See <code>COMMERCIAL.md</code> for terms and our implementation-services path.</p>
+      </div>
+    </div>
+    <div class="rule" style="background:rgba(212,191,145,.32);margin-top:.28in"></div>
+    <p style="margin-top:.16in"><span class="kicker">Start here.</span> Clone the repo, run <code>docker compose up</code>, and open <code>localhost:8080</code>. Then copy the bundled deployment to your own and edit it.</p>
+    <p class="repo" style="margin-top:.18in">github.com/GestaltWorks/GestaltWorkframe</p>
+    <div class="footer"><span>Gestalt Works</span><span>FSL-1.1-ALv2 framework · Apache-2.0 connectors · COMMERCIAL.md</span></div>
+  </section>
+</body>
+</html>
