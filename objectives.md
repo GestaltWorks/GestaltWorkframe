@@ -137,7 +137,8 @@ and connector bundle on top of the shared codebase.
   reserved for explicit build/debug/contact/demo intent, frustration,
   production/client urgency, or clear readiness to scope work.
 - Public users do not control model spend. They can ask for help or support;
-  operator-side policy decides whether paid cloud escalation is allowed.
+  the router decides provider and tier by task fit and value, and operator-
+  side policy plus spend caps bound whether paid cloud escalation happens.
 
 ## Website Experience
 - The public website is a branded landing page plus the guided terminal
@@ -169,8 +170,9 @@ and connector bundle on top of the shared codebase.
   that every mode or profile use a different model. Candidate profiles are
   visible for admin planning but skipped until enabled.
 - No public client path can directly request premium cloud routes, run an
-  ensemble, or burn credits. Paid escalation is controlled by operator
-  configuration and hard caps.
+  ensemble, or force credit spend. The router may still escalate to cloud on
+  task fit and value; paid escalation is controlled by operator configuration
+  and hard caps.
 
 ## Success Criteria (v1)
 - A user on the website can open the terminal widget, pick a mode, and hold a

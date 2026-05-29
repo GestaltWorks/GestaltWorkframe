@@ -82,9 +82,10 @@ OpenAI-compatible endpoint when available.
 - The terminal is the user-facing command layer; inference happens in the
   FastAPI/router layer. The local GPU host is optional and the app must
   tolerate it being busy/offline.
-- Public users do not control credit spend. Cloud escalation is governed
-  by operator-side config, per-turn/session caps, and graceful local-only
-  fallback.
+- Public users do not control credit spend, but the router may still
+  escalate to cloud on its own when task fit, capability, and value justify
+  it. Cloud escalation is governed by operator-side config, per-turn/session
+  caps, and graceful local-only fallback.
 - Retrieved source context marked `privacy.cloud_llm_eligible=false` must
   block cloud provider selection. If local inference is unavailable,
   return an operator-readable local-only error instead.
@@ -103,7 +104,10 @@ models receive a cost/value advantage when adequate and available, and
 premium cloud calls are reserved for tasks where their additional reasoning
 value justifies the cost. The router ranks eligible routes by configured
 strategy: best value, prefer local, prefer cloud quality, local only, or
-cloud only.
+cloud only. Under best value the cost/value advantage is a modest lean
+toward cheaper tiers (local, then low cost) that wins ties and near-ties;
+task fit still dominates, so a premium-only task match escalates a genuinely
+hard turn over the lean.
 
 `llm/profiles.json` is the model-routing reference. Keep task tags,
 `avoid_for`, deployment status, runtime group, enablement, priorities,
@@ -235,7 +239,11 @@ context/output limits, and evidence links there.
    whitelisting, Pydantic argument validation, bounded execution, quarantined
    tool-result reinjection, logging, and final-answer enforcement.
 10. **No user-controlled credit burn.** Public users can ask for help or
-   support, but cannot directly trigger Claude, ensembles, or paid cloud calls.
+   support, but cannot directly force Claude, ensembles, or paid cloud calls.
+   The router may still escalate to cloud on its own when task fit, capability,
+   and value justify it, bounded by operator config and the per-turn/session/
+   day/month spend caps. The user picks the question, never the provider or the
+   spend.
 11. **Check the plan before changing direction.** Before architecture, routing,
    provider, mode, MCP/tool, cost, security, or deployment changes, compare the
    proposed approach against `objectives.md` and this file. If the work reveals
