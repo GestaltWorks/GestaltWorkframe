@@ -326,6 +326,112 @@ async def test_best_value_leans_local_without_task_match(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_low_cost_cloud_eligible_under_default_policy_when_local_down(tmp_path):
+    """Regression for the prod Opus-escalation gap. Under the default
+    LOCAL_THEN_CLAUDE_IF_HIGH_VALUE policy with local down and no task-fit
+    signal, a routine turn must fall back to the low_cost cloud tier, not
+    premium Claude. This only holds because the low_cost routes now list
+    local_then_claude_if_high_value in allowed_response_policies (Option B);
+    without it they were filtered out before scoring and premium won by
+    priority. Scores: low_cost 58+40=98 beats premium 95+0=95.
+    """
+    local = _make_provider(raises=RuntimeError("local down"))
+    low_cost = _make_provider(response={"content": "low_cost", "usage": {"input_tokens": 1, "output_tokens": 1}})
+    premium = _make_provider(response={"content": "premium", "usage": {"input_tokens": 1, "output_tokens": 1}})
+    router = LLMRouter(
+        primary=local,
+        cloud_budget=_budget(tmp_path),
+        routes=[
+            _route("local", local, priority=40),
+            _route(
+                "low_cost",
+                low_cost,
+                cost_tier="low_cost",
+                policies=["local_then_low_cost", "local_then_claude_if_high_value"],
+                priority=58,
+            ),
+            _route(
+                "premium",
+                premium,
+                cost_tier="premium",
+                policies=["local_then_claude_if_high_value"],
+                priority=95,
+            ),
+        ],
+    )
+
+    result = await router.chat(
+        [{"role": "user", "content": "how do I add a Jinja filter"}],
+        cloud_allowed=True,
+        response_policy="local_then_claude_if_high_value",
+        session_id="s1",
+    )
+
+    assert result["content"] == "low_cost"
+    low_cost.chat.assert_called_once()
+    premium.chat.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_premium_routine_fallback_prefers_sonnet_over_reserved_opus(tmp_path):
+    """With local and low-cost down, a routine turn (no task fit) must fall to
+    the default premium route (Sonnet), not the reserved premium (Opus). Opus
+    stays enabled but its lower routing_priority keeps it off routine premium
+    fallback. Scores: sonnet 95+0=95 beats opus 90+0=90.
+    """
+    sonnet = _make_provider(response={"content": "sonnet", "usage": {"input_tokens": 1, "output_tokens": 1}})
+    opus = _make_provider(response={"content": "opus", "usage": {"input_tokens": 1, "output_tokens": 1}})
+    router = LLMRouter(
+        primary=sonnet,
+        cloud_budget=_budget(tmp_path),
+        routes=[
+            _route("sonnet", sonnet, cost_tier="premium", policies=["local_then_claude_if_high_value"], priority=95, tasks=["complex_implementation"]),
+            _route("opus", opus, cost_tier="premium", policies=["local_then_claude_if_high_value"], priority=90, tasks=["deep_reasoning"]),
+        ],
+    )
+    assert router._route_score(router.routes[0], None) > router._route_score(router.routes[1], None)
+
+    result = await router.chat(
+        [{"role": "user", "content": "what is a good naming convention"}],
+        cloud_allowed=True,
+        response_policy="local_then_claude_if_high_value",
+        session_id="s1",
+    )
+
+    assert result["content"] == "sonnet"
+    opus.chat.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reserved_opus_still_wins_hard_task_via_task_fit(tmp_path):
+    """The reservation only changes routine ordering. A deep-reasoning task
+    still escalates to Opus through the +1000 recommended_for bonus, which
+    dwarfs the 5-point priority gap: opus 90+1000=1090 beats sonnet 95+0=95.
+    """
+    sonnet = _make_provider(response={"content": "sonnet", "usage": {"input_tokens": 1, "output_tokens": 1}})
+    opus = _make_provider(response={"content": "opus", "usage": {"input_tokens": 1, "output_tokens": 1}})
+    router = LLMRouter(
+        primary=sonnet,
+        cloud_budget=_budget(tmp_path),
+        routes=[
+            _route("sonnet", sonnet, cost_tier="premium", policies=["local_then_claude_if_high_value"], priority=95, tasks=["complex_implementation"]),
+            _route("opus", opus, cost_tier="premium", policies=["local_then_claude_if_high_value"], priority=90, tasks=["deep_reasoning"]),
+        ],
+    )
+
+    result = await router.chat(
+        [{"role": "user", "content": "reason carefully about this failure mode"}],
+        cloud_allowed=True,
+        response_policy="local_then_claude_if_high_value",
+        task="deep_reasoning",
+        session_id="s1",
+    )
+
+    assert result["content"] == "opus"
+    sonnet.chat.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_best_value_can_choose_task_matched_cloud_when_policy_allows(tmp_path):
     local = _make_provider(response={"content": "local"})
     cloud = _make_provider(response={"content": "cloud", "usage": {"input_tokens": 1, "output_tokens": 1}})
