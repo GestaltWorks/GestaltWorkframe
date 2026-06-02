@@ -374,9 +374,10 @@ async def test_low_cost_cloud_eligible_under_default_policy_when_local_down(tmp_
 
 @pytest.mark.asyncio
 async def test_premium_routine_fallback_prefers_sonnet_over_reserved_opus(tmp_path):
-    """With local and low-cost down, a routine turn (no task fit) must fall to
-    the default premium route (Sonnet), not the reserved premium (Opus). Opus
-    stays enabled but its lower routing_priority keeps it off routine premium
+    """With only premium routes eligible (local and low-cost absent from the
+    candidate set), a routine turn (no task fit) must fall to the default
+    premium route (Sonnet), not the reserved premium (Opus). Opus stays
+    enabled but its lower routing_priority keeps it off routine premium
     fallback. Scores: sonnet 95+0=95 beats opus 90+0=90.
     """
     sonnet = _make_provider(response={"content": "sonnet", "usage": {"input_tokens": 1, "output_tokens": 1}})
