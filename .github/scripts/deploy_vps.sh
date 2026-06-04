@@ -276,32 +276,6 @@ path.write_text(text.replace(marker, marker + block))
 PY
 fi
 
-# Public newsletter signup page (static export). Exact-match location so
-# GET /newsletter/subscribe serves the Next.js HTML page and POST
-# /newsletter/api/subscribe falls through to the /newsletter/ prefix
-# proxy block below.
-if ! grep -q 'location = /newsletter/subscribe' "$NGINX_SITE_FILE"; then
-  cp "$NGINX_SITE_FILE" "$NGINX_SITE_FILE.bak.$(date +%Y%m%d%H%M%S)"
-  python3 - "$NGINX_SITE_FILE" "$WEB_DIR" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-web_dir = sys.argv[2]
-text = path.read_text()
-marker = "    location /newsletter/ {\n"
-block = f"""    location = /newsletter/subscribe {{
-        default_type text/html;
-        alias {web_dir}/out/newsletter/subscribe.html;
-    }}
-
-"""
-if marker not in text:
-    raise SystemExit("expected /newsletter/ prefix marker not found")
-path.write_text(text.replace(marker, block + marker, 1))
-PY
-fi
-
 if ! grep -q 'location /newsletter/' "$NGINX_SITE_FILE"; then
   cp "$NGINX_SITE_FILE" "$NGINX_SITE_FILE.bak.$(date +%Y%m%d%H%M%S)"
   python3 - "$NGINX_SITE_FILE" <<'PY'
@@ -324,6 +298,32 @@ block = f"""    location /newsletter/ {{
 """
 if marker not in text:
     raise SystemExit("expected /contact location marker not found")
+path.write_text(text.replace(marker, block + marker, 1))
+PY
+fi
+
+# Public newsletter signup page (static export). Exact-match location so
+# GET /newsletter/subscribe serves the Next.js HTML page and POST
+# /newsletter/api/subscribe falls through to the /newsletter/ prefix
+# proxy block above.
+if ! grep -q 'location = /newsletter/subscribe' "$NGINX_SITE_FILE"; then
+  cp "$NGINX_SITE_FILE" "$NGINX_SITE_FILE.bak.$(date +%Y%m%d%H%M%S)"
+  python3 - "$NGINX_SITE_FILE" "$WEB_DIR" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+web_dir = sys.argv[2]
+text = path.read_text()
+marker = "    location /newsletter/ {\n"
+block = f"""    location = /newsletter/subscribe {{
+        default_type text/html;
+        alias {web_dir}/out/newsletter/subscribe.html;
+    }}
+
+"""
+if marker not in text:
+    raise SystemExit("expected /newsletter/ prefix marker not found")
 path.write_text(text.replace(marker, block + marker, 1))
 PY
 fi
@@ -612,41 +612,39 @@ else
   rm -f "$LIBRARY_NGINX_TMP"
 fi
 
-# Phase 4 newsletter archive: /library/issues.json + per-slug detail.
-if ! grep -q 'location = /library/issues.json' "$NGINX_SITE_FILE"; then
+if ! grep -q 'location = /library/latest' "$NGINX_SITE_FILE" || ! grep -q 'location = /library/latest.json' "$NGINX_SITE_FILE"; then
   cp "$NGINX_SITE_FILE" "$NGINX_SITE_FILE.bak.$(date +%Y%m%d%H%M%S)"
-  python3 - "$NGINX_SITE_FILE" "$API_PORT" <<'PY'
+  python3 - "$NGINX_SITE_FILE" "$WEB_DIR" "$API_PORT" <<'PY'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
-port = sys.argv[2]
+web_dir = sys.argv[2]
+port = sys.argv[3]
 text = path.read_text()
-# Anchor: the Phase 2 ticker.json block must exist already (added above).
-marker = (
-    f"    location = /library/ticker.json {{\n"
-    f"        proxy_pass http://127.0.0.1:{port}/library/ticker.json;\n"
-)
-block = f"""    location = /library/issues.json {{
-        proxy_pass http://127.0.0.1:{port}/library/issues.json;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }}
-
-    location ~ ^/library/issues/.+\\.json$ {{
-        proxy_pass http://127.0.0.1:{port}$request_uri;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }}
-
+marker = """    location = /library {
 """
+blocks = []
+if "    location = /library/latest {\n" not in text:
+    blocks.append(f"""    location = /library/latest {{
+        default_type text/html;
+        alias {web_dir}/out/library/latest.html;
+    }}
+""")
+if "    location = /library/latest.json {\n" not in text:
+    blocks.append(f"""    location = /library/latest.json {{
+        proxy_pass http://127.0.0.1:{port}/library/latest.json;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }}
+""")
+if not blocks:
+    sys.exit(0)
 if marker not in text:
-    raise SystemExit("expected /library/ticker.json marker not found (run after the ticker block)")
-path.write_text(text.replace(marker, block + marker, 1))
+    raise SystemExit("expected /library location marker not found")
+path.write_text(text.replace(marker, "\n".join(blocks) + "\n" + marker, 1))
 PY
 fi
 
@@ -688,39 +686,41 @@ raise SystemExit("expected /library/latest.json marker not found")
 PY
 fi
 
-if ! grep -q 'location = /library/latest' "$NGINX_SITE_FILE" || ! grep -q 'location = /library/latest.json' "$NGINX_SITE_FILE"; then
+# Phase 4 newsletter archive: /library/issues.json + per-slug detail.
+if ! grep -q 'location = /library/issues.json' "$NGINX_SITE_FILE"; then
   cp "$NGINX_SITE_FILE" "$NGINX_SITE_FILE.bak.$(date +%Y%m%d%H%M%S)"
-  python3 - "$NGINX_SITE_FILE" "$WEB_DIR" "$API_PORT" <<'PY'
+  python3 - "$NGINX_SITE_FILE" "$API_PORT" <<'PY'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
-web_dir = sys.argv[2]
-port = sys.argv[3]
+port = sys.argv[2]
 text = path.read_text()
-marker = """    location = /library {
-"""
-blocks = []
-if "    location = /library/latest {\n" not in text:
-    blocks.append(f"""    location = /library/latest {{
-        default_type text/html;
-        alias {web_dir}/out/library/latest.html;
-    }}
-""")
-if "    location = /library/latest.json {\n" not in text:
-    blocks.append(f"""    location = /library/latest.json {{
-        proxy_pass http://127.0.0.1:{port}/library/latest.json;
+# Anchor: the ticker.json block must exist already (added above).
+marker = (
+    f"    location = /library/ticker.json {{\n"
+    f"        proxy_pass http://127.0.0.1:{port}/library/ticker.json;\n"
+)
+block = f"""    location = /library/issues.json {{
+        proxy_pass http://127.0.0.1:{port}/library/issues.json;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }}
-""")
-if not blocks:
-    sys.exit(0)
+
+    location ~ ^/library/issues/.+\\.json$ {{
+        proxy_pass http://127.0.0.1:{port}$request_uri;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }}
+
+"""
 if marker not in text:
-    raise SystemExit("expected /library location marker not found")
-path.write_text(text.replace(marker, "\n".join(blocks) + "\n" + marker, 1))
+    raise SystemExit("expected /library/ticker.json marker not found (run after the ticker block)")
+path.write_text(text.replace(marker, block + marker, 1))
 PY
 fi
 
