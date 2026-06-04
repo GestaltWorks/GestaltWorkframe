@@ -159,8 +159,29 @@ if [[ -n "${NGINX_SITE_FILE:-}" ]]; then
 set -euo pipefail
 
 if [[ ! -f "$NGINX_SITE_FILE" ]]; then
-  echo "nginx site file not found: $NGINX_SITE_FILE" >&2
-  exit 1
+  _site_name="${SERVER_NAME:-$(hostname -f 2>/dev/null || echo localhost)}"
+  sudo mkdir -p "$(dirname "$NGINX_SITE_FILE")"
+  sudo tee "$NGINX_SITE_FILE" > /dev/null <<NGINX_BASE
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${_site_name};
+
+    location /health {
+        proxy_pass http://127.0.0.1:${API_PORT}/health;
+    }
+
+    location /contact {
+        proxy_pass http://127.0.0.1:${API_PORT}/contact;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+NGINX_BASE
+  sudo ln -sf "$NGINX_SITE_FILE" "/etc/nginx/sites-enabled/$(basename "$NGINX_SITE_FILE")" 2>/dev/null || true
+  echo "Scaffolded new nginx site file: $NGINX_SITE_FILE"
 fi
 
 # Root cutover: production / now serves this repo's terminal landing page.
