@@ -156,12 +156,34 @@ class ChatTurnOrchestrator:
         intake_complete: bool,
         intake: dict[str, str] | None = None,
     ) -> RoutingDecision:
-        return self.orchestrator.decide(
+        decision = self.orchestrator.decide(
             starting_mode,
             message,
             intake_complete=intake_complete,
             intake=intake,
         )
+        return self._route_aware_tool_loop_decision(decision, message)
+
+    def _route_aware_tool_loop_decision(self, decision: RoutingDecision, user_message: str) -> RoutingDecision:
+        if decision.tool_execution_mode != ToolExecutionMode.MODEL_TOOL_LOOP or not decision.tool_loop_requires_route:
+            return decision
+        has_tool_capable_route = getattr(self.router, "has_tool_capable_route", None)
+        if not callable(has_tool_capable_route):
+            return decision
+        if has_tool_capable_route(
+            cloud_allowed=decision.cloud_allowed,
+            response_policy=decision.response_policy.value,
+            task=self._router_task(decision, user_message),
+            context_cloud_eligible=True,
+        ):
+            return decision
+        return decision.model_copy(update={
+            "provider_tools": [],
+            "tool_execution_mode": ToolExecutionMode.BACKEND_RETRIEVAL_ONLY,
+            "max_model_calls_per_turn": 1,
+            "tool_loop_requires_route": False,
+            "reason": f"{decision.reason}; tool_loop=backend_fallback_no_capable_route",
+        })
 
     async def run(
         self,
@@ -186,7 +208,7 @@ class ChatTurnOrchestrator:
         persona, messages, retrieval = await self._messages_for_turn(decision, user_message, history)
         decision = self._decision_for_retrieval(decision, retrieval)
         if decision.tool_execution_mode == ToolExecutionMode.MODEL_TOOL_LOOP:
-            content, retrieval = await self._run_model_tool_loop(decision, persona, messages, retrieval, session_id)
+            content, retrieval = await self._run_model_tool_loop(decision, persona, messages, retrieval, session_id, user_message)
             content = await self._retry_cloud_if_unknown(content, decision, messages, [], session_id, user_message)
             grade = self.grader.grade(content, decision, retrieval)
             if not grade.adequate:
@@ -432,6 +454,7 @@ class ChatTurnOrchestrator:
         messages: list[Message],
         retrieval: RetrievalResult | None,
         session_id: str,
+        user_message: str,
     ) -> tuple[str, RetrievalResult | None]:
         if decision.max_model_calls_per_turn < 2:
             return "I can't answer this turn because the model call limit has been reached.", retrieval
@@ -449,13 +472,36 @@ class ChatTurnOrchestrator:
         )
         tool_calls = self._response_tool_calls(response)
         if not tool_calls:
-            return self._response_text(response), retrieval
+            backend_answer = await self._backend_retrieval_answer_after_tool_loop_miss(
+                decision,
+                persona,
+                messages,
+                user_message,
+                session_id,
+                retrieval,
+            )
+            return backend_answer if backend_answer is not None else (self._response_text(response), retrieval)
 
         tool_messages: list[Message] = []
+        tool_retrieval_found = False
         for tool_call in tool_calls[: decision.max_tool_calls_per_turn]:
             result, tool_retrieval = await self._execute_tool_call(decision, tool_call)
+            if tool_retrieval:
+                tool_retrieval_found = True
             retrieval = tool_retrieval or retrieval
             tool_messages.append(self._tool_result_message(self._tool_call_name(tool_call), result))
+
+        if not tool_retrieval_found:
+            backend_answer = await self._backend_retrieval_answer_after_tool_loop_miss(
+                decision,
+                persona,
+                messages,
+                user_message,
+                session_id,
+                retrieval,
+            )
+            if backend_answer is not None:
+                return backend_answer
 
         decision = self._decision_for_retrieval(decision, retrieval)
         final_response = await self.router.chat(
@@ -473,6 +519,39 @@ class ChatTurnOrchestrator:
             logger.warning("Model requested tools after tool loop finalization; request ignored.")
             return UNKNOWN_ANSWER, retrieval
         return final_text, retrieval
+
+    async def _backend_retrieval_answer_after_tool_loop_miss(
+        self,
+        decision: RoutingDecision,
+        persona: Persona,
+        messages: list[Message],
+        user_message: str,
+        session_id: str,
+        retrieval: RetrievalResult | None,
+    ) -> tuple[str, RetrievalResult | None] | None:
+        if not decision.retrieval_required or not decision.retrieval_tool:
+            return None
+        backend_decision = decision.model_copy(update={
+            "provider_tools": [],
+            "tool_execution_mode": ToolExecutionMode.BACKEND_RETRIEVAL_ONLY,
+            "max_model_calls_per_turn": 1,
+            "tool_loop_requires_route": False,
+        })
+        backend_retrieval = retrieval or await self._retrieve(backend_decision, user_message)
+        if not backend_retrieval:
+            return None
+        backend_decision = self._decision_for_retrieval(backend_decision, backend_retrieval)
+        response = await self.router.chat(
+            [*messages, self._retrieval_message(backend_retrieval)],
+            tools=[],
+            force_secondary=persona.force_secondary,
+            cloud_allowed=backend_decision.cloud_allowed,
+            response_policy=backend_decision.response_policy.value,
+            task=self._router_task(backend_decision, user_message),
+            session_id=session_id,
+            context_cloud_eligible=self._context_cloud_eligible(backend_retrieval),
+        )
+        return self._response_text(response), backend_retrieval
 
     def _router_task(self, decision: RoutingDecision, user_message: str) -> str:
         if decision.frame.task:

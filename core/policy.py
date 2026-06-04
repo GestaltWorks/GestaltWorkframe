@@ -143,6 +143,7 @@ class RoutingDecision(BaseModel):
     max_model_calls_per_turn: int = 1
     max_retrieval_calls_per_turn: int = 1
     max_tool_calls_per_turn: int = 1
+    tool_loop_requires_route: bool = False
     answer_allowed: bool = True
     intake_required: bool = False
     service_handoff_suggested: bool = False

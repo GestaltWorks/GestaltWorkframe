@@ -40,6 +40,8 @@ class ModelProfile(BaseModel):
     recommended_for: list[str] = Field(default_factory=list)
     avoid_for: list[str] = Field(default_factory=list)
     routing_priority: int = 0
+    capabilities: list[str] = Field(default_factory=list)
+    tool_calling_quality: Literal["none", "weak", "ok", "strong"] = "none"
     context_window_tokens: int | None = None
     max_output_tokens: int | None = None
     evidence: list[ModelEvidence] = Field(default_factory=list)

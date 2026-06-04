@@ -56,10 +56,20 @@ class ProviderRoute:
     deployment_status: str = "active"
     runtime_group: str = ""
     enabled_by_default: bool = True
+    capabilities: list[str] = field(default_factory=list)
+    tool_calling_quality: str = "none"
 
     @property
     def is_cloud(self) -> bool:
         return self.cost_tier in {"low_cost", "premium"}
+
+    @property
+    def supports_tools(self) -> bool:
+        return "tools" in {capability.strip().lower() for capability in self.capabilities}
+
+    @property
+    def reliable_tool_calling(self) -> bool:
+        return self.supports_tools and self.tool_calling_quality in {"ok", "strong"}
 
 
 class LLMRouter:
@@ -127,6 +137,8 @@ class LLMRouter:
         provider_role = getattr(provider, "provider_role", role)
         provider_cost_tier = getattr(provider, "cost_tier", cost_tier)
         provider_policies = getattr(provider, "allowed_response_policies", policies)
+        provider_capabilities = getattr(provider, "capabilities", [])
+        provider_tool_quality = getattr(provider, "tool_calling_quality", "none")
         return ProviderRoute(
             name=profile_name if isinstance(profile_name, str) else name,
             provider=provider,
@@ -135,6 +147,8 @@ class LLMRouter:
             role=provider_role if isinstance(provider_role, str) else role,
             cost_tier=provider_cost_tier if isinstance(provider_cost_tier, str) else cost_tier,
             allowed_response_policies=provider_policies if isinstance(provider_policies, list) else policies,
+            capabilities=provider_capabilities if isinstance(provider_capabilities, list) else [],
+            tool_calling_quality=provider_tool_quality if isinstance(provider_tool_quality, str) else "none",
             configured=True,
         )
 
@@ -146,6 +160,25 @@ class LLMRouter:
                 continue
             closed.add(id(provider))
             await provider.close()
+
+    def has_tool_capable_route(
+        self,
+        *,
+        cloud_allowed: bool = False,
+        response_policy: str | None = None,
+        task: str | None = None,
+        context_cloud_eligible: bool = True,
+    ) -> bool:
+        ordered_routes, _diagnostics = self._ordered_routes(
+            False,
+            cloud_allowed,
+            response_policy,
+            task,
+            context_cloud_eligible,
+            require_tools=True,
+            publish=False,
+        )
+        return bool(ordered_routes)
 
     async def provider_statuses(
         self,
@@ -198,6 +231,10 @@ class LLMRouter:
                 "provider_role": route.role,
                 "cost_tier": route.cost_tier,
                 "allowed_response_policies": route.allowed_response_policies,
+                "capabilities": route.capabilities,
+                "tool_calling_quality": route.tool_calling_quality,
+                "supports_tools": route.supports_tools,
+                "reliable_tool_calling": route.reliable_tool_calling,
                 "recommended_for": route.recommended_for,
                 "avoid_for": route.avoid_for,
                 "routing_priority": route.routing_priority,
@@ -357,6 +394,8 @@ class LLMRouter:
         response_policy: str | None,
         task: str | None,
         context_cloud_eligible: bool = True,
+        require_tools: bool = False,
+        publish: bool = True,
     ) -> tuple[list[ProviderRoute], dict[str, Any]]:
         strategy = self.routing_strategy
         if force_secondary and strategy == "local_only":
@@ -368,6 +407,7 @@ class LLMRouter:
             "response_policy": response_policy,
             "task": task,
             "context_cloud_eligible": context_cloud_eligible,
+            "require_tools": require_tools,
             "candidates": [],
             "ordered_routes": [],
             "selected_route": "",
@@ -376,7 +416,15 @@ class LLMRouter:
         }
         routes = []
         for route in self.routes:
-            blocked_reason = self._selection_blocked_reason(route, force_secondary, cloud_allowed, response_policy, strategy, context_cloud_eligible)
+            blocked_reason = self._selection_blocked_reason(
+                route,
+                force_secondary,
+                cloud_allowed,
+                response_policy,
+                strategy,
+                context_cloud_eligible,
+                require_tools,
+            )
             score = None if blocked_reason else self._route_score(route, task, strategy)
             diagnostics["candidates"].append({
                 "name": route.name,
@@ -385,6 +433,8 @@ class LLMRouter:
                 "deployment_status": route.deployment_status,
                 "runtime_group": route.runtime_group,
                 "enabled": self.route_enabled(route.name),
+                "supports_tools": route.supports_tools,
+                "tool_calling_quality": route.tool_calling_quality,
                 "score": score,
                 "blocked_reason": blocked_reason,
                 "recommended_match": self._task_matches(task, route.recommended_for),
@@ -408,7 +458,8 @@ class LLMRouter:
         diagnostics["ordered_routes"] = [route.name for route in ordered]
         if not ordered and force_secondary and strategy == "local_only":
             diagnostics["empty_reason"] = "force_secondary_conflicts_with_local_only"
-        self._publish_route_decision(diagnostics)
+        if publish:
+            self._publish_route_decision(diagnostics)
         logger.debug(
             "LLM route decision strategy=%s task=%s ordered=%s",
             strategy,
@@ -425,9 +476,12 @@ class LLMRouter:
         response_policy: str | None,
         strategy: str,
         context_cloud_eligible: bool = True,
+        require_tools: bool = False,
     ) -> str:
         if strategy == "local_only" and route.is_cloud:
             return "strategy_local_only"
+        if require_tools and not route.reliable_tool_calling:
+            return "tool_calling_not_supported"
         if strategy == "cloud_only" and not route.is_cloud:
             return "strategy_cloud_only"
         if force_secondary and not route.is_cloud:
@@ -467,6 +521,8 @@ class LLMRouter:
             score += 1000
         if self._task_matches(task, route.avoid_for):
             score -= 2000
+        if route.reliable_tool_calling:
+            score += {"ok": 100, "strong": 250}.get(route.tool_calling_quality, 0)
         if self.runtime_manager is not None:
             score += self.runtime_manager.score_adjustment(
                 route,
@@ -757,7 +813,15 @@ class LLMRouter:
         await self._reset_breaker_if_healthy()
 
         sent_primary_chunk = False
-        ordered_routes, diagnostics = self._ordered_routes(force_secondary, cloud_allowed, response_policy, task, context_cloud_eligible)
+        require_tools = bool(tools)
+        ordered_routes, diagnostics = self._ordered_routes(
+            force_secondary,
+            cloud_allowed,
+            response_policy,
+            task,
+            context_cloud_eligible,
+            require_tools=require_tools,
+        )
         for route in ordered_routes:
             if route.provider is None:
                 continue
@@ -813,7 +877,15 @@ class LLMRouter:
     ) -> Any:
         await self._reset_breaker_if_healthy()
 
-        ordered_routes, diagnostics = self._ordered_routes(force_secondary, cloud_allowed, response_policy, task, context_cloud_eligible)
+        require_tools = bool(tools)
+        ordered_routes, diagnostics = self._ordered_routes(
+            force_secondary,
+            cloud_allowed,
+            response_policy,
+            task,
+            context_cloud_eligible,
+            require_tools=require_tools,
+        )
         for route in ordered_routes:
             if route.provider is None:
                 continue

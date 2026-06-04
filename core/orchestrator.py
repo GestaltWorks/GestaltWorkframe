@@ -163,6 +163,7 @@ class Orchestrator:
             provider_tools=provider_tools,
             tool_execution_mode=tool_execution_mode,
             max_model_calls_per_turn=2 if tool_execution_mode == ToolExecutionMode.MODEL_TOOL_LOOP else 1,
+            tool_loop_requires_route=tool_execution_mode == ToolExecutionMode.MODEL_TOOL_LOOP,
             service_handoff_suggested=service_handoff,
             soft_service_offer=soft_offer,
             cloud_allowed=cloud_allowed,

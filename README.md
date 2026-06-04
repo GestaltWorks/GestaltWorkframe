@@ -38,13 +38,16 @@ web/           Next.js frontend — landing page, guided terminal, Library, cont
   not a production dependency or a requirement to run every local candidate.
 - `llm/profiles.json` is the model-routing reference. It records recommended task
   families, `avoid_for` task tags, active/candidate/disabled deployment status,
-  runtime group, default enablement, context/output limits, and evidence links.
+  runtime group, default enablement, capability flags, tool-calling quality,
+  context/output limits, and evidence links.
   Default premium Claude path is Sonnet 4.6 or newer when paid escalation is
   enabled; Opus is available for deeper reasoning, architecture, critical
   review, and high-stakes agentic work when the value justifies the higher cost.
 - Profiles are routing/capability declarations, not a guarantee of one physical
   model per mode. Multiple profiles can point at the same endpoint/model when it
-  is the best callable tool for the job.
+  is the best callable tool for the job. Model-driven tool loops are route-aware:
+  if no reliable tool-calling route is eligible, the backend uses direct retrieval
+  and only sends quarantined retrieved context to the selected model.
 - Gemini is represented as an OpenAI-compatible Google AI Studio cloud route. It
   is callable only when the API process has the server-side base URL and API key
   configured. Gemma is a separate open-weight local/hosted model family.

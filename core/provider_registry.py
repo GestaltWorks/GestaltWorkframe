@@ -50,6 +50,8 @@ class LocalProviderProfile(BaseModel):
     model: str = "local-model"
     timeout: float = 30.0
     params: GenerationParams = Field(default_factory=GenerationParams)
+    capabilities: list[str] = Field(default_factory=lambda: ["chat", "rag_answering"])
+    tool_calling_quality: Literal["none", "weak", "ok", "strong"] = "none"
 
 
 class SecondaryProviderProfile(BaseModel):
@@ -64,6 +66,8 @@ class SecondaryProviderProfile(BaseModel):
     api_key: str = Field(default="", repr=False)
     model: str = "claude-haiku-4-5-20251001"
     params: GenerationParams = Field(default_factory=lambda: GenerationParams(max_tokens=4096))
+    capabilities: list[str] = Field(default_factory=lambda: ["chat", "tools", "rag_answering"])
+    tool_calling_quality: Literal["none", "weak", "ok", "strong"] = "strong"
 
 
 class ProviderRegistry:
@@ -96,6 +100,8 @@ class ProviderRegistry:
                 ollama_base_url=mp.base_url if mp.provider == "ollama" else "http://localhost:11434",
                 model=mp.model,
                 params=mp.params,
+                capabilities=mp.capabilities,
+                tool_calling_quality=mp.tool_calling_quality,
             )
         else:
             primary = LocalProviderProfile(
@@ -120,6 +126,8 @@ class ProviderRegistry:
                 api_key=_env_text("ANTHROPIC_API_KEY"),
                 model=sp.model,
                 params=sp.params,
+                capabilities=sp.capabilities,
+                tool_calling_quality=sp.tool_calling_quality,
             )
         else:
             secondary = SecondaryProviderProfile(
@@ -177,6 +185,8 @@ class ProviderRegistry:
         provider.provider_role = profile.role  # type: ignore[attr-defined]
         provider.cost_tier = profile.cost_tier  # type: ignore[attr-defined]
         provider.allowed_response_policies = profile.allowed_response_policies  # type: ignore[attr-defined]
+        provider.capabilities = profile.capabilities  # type: ignore[attr-defined]
+        provider.tool_calling_quality = profile.tool_calling_quality  # type: ignore[attr-defined]
 
     def _route_from_local_profile(self, profile: ModelProfile) -> ProviderRoute:
         if profile.provider == "ollama":
@@ -232,6 +242,8 @@ class ProviderRegistry:
             deployment_status=profile.deployment_status,
             runtime_group=profile.runtime_group,
             enabled_by_default=profile.enabled_by_default,
+            capabilities=profile.capabilities,
+            tool_calling_quality=profile.tool_calling_quality,
         )
 
     def _route_from_model_profile(
@@ -258,6 +270,8 @@ class ProviderRegistry:
             deployment_status=profile.deployment_status,
             runtime_group=profile.runtime_group or ("cloud" if profile.cost_tier in {"low_cost", "premium"} else "personal_gpu"),
             enabled_by_default=profile.route_enabled_by_default(),
+            capabilities=profile.capabilities,
+            tool_calling_quality=profile.tool_calling_quality,
         )
 
     def _attach_model_profile(self, provider: LLMProvider, profile: ModelProfile) -> None:
@@ -265,3 +279,5 @@ class ProviderRegistry:
         provider.provider_role = profile.role  # type: ignore[attr-defined]
         provider.cost_tier = profile.cost_tier  # type: ignore[attr-defined]
         provider.allowed_response_policies = profile.allowed_response_policies  # type: ignore[attr-defined]
+        provider.capabilities = profile.capabilities  # type: ignore[attr-defined]
+        provider.tool_calling_quality = profile.tool_calling_quality  # type: ignore[attr-defined]

@@ -18,6 +18,8 @@
       "recommended_for": ["local_default", "routine_chat", "guided_intake", "basic_help", "implementation_help", "socratic_tutor"],
       "avoid_for": ["deep_code_review", "large_refactor", "high_stakes_reasoning"],
       "routing_priority": 40,
+      "capabilities": ["chat", "rag_answering"],
+      "tool_calling_quality": "none",
       "description": "Llama 3.1 8B Instruct Q4_K_M — baseline for 6900XT (16 GB VRAM)"
     },
     "llama-3.2-3b-q4": {
@@ -38,6 +40,8 @@
       "recommended_for": ["fast_local_chat", "guided_intake", "classification", "socratic_tutor"],
       "avoid_for": ["code_review", "complex_debugging", "high_stakes_reasoning"],
       "routing_priority": 30,
+      "capabilities": ["chat", "rag_answering"],
+      "tool_calling_quality": "none",
       "description": "Llama 3.2 3B Instruct Q4_K_M — lighter option, faster inference"
     },
     "qwen-2.5-coder-7b-q4": {
@@ -58,6 +62,8 @@
       "recommended_for": ["local_coding", "workflow_examples", "jinja_help", "workflow_debugging", "implementation_help"],
       "avoid_for": ["high_value_service_inquiry", "deep_code_review"],
       "routing_priority": 55,
+      "capabilities": ["chat", "rag_answering"],
+      "tool_calling_quality": "weak",
       "description": "Qwen 2.5 Coder 7B Instruct Q4_K_M via llama.cpp/Vulkan — code-heavy automator sessions"
     },
     "claude-haiku-4-5": {
@@ -78,6 +84,8 @@
       "recommended_for": ["low_cost_fallback", "summarization", "routine_support", "classification", "workflow_examples", "implementation_help", "socratic_tutor"],
       "avoid_for": ["deep_code_review", "large_refactor", "critical_security_review"],
       "routing_priority": 60,
+      "capabilities": ["chat", "tools", "rag_answering"],
+      "tool_calling_quality": "strong",
       "context_window_tokens": 200000,
       "max_output_tokens": 64000,
       "description": "Claude Haiku 4.5 — low-cost cloud fallback"
@@ -103,6 +111,8 @@
       "recommended_for": ["low_cost_fallback", "routine_support", "classification", "implementation_help", "socratic_tutor"],
       "avoid_for": ["critical_security_review", "large_refactor", "high_stakes_reasoning"],
       "routing_priority": 58,
+      "capabilities": ["chat", "tools", "rag_answering"],
+      "tool_calling_quality": "ok",
       "description": "Gemini cloud route through Google AI Studio's OpenAI-compatible API. Configure server-side GEMINI_CLOUD_BASE_URL, GEMINI_CLOUD_API_KEY, and optionally GEMINI_CLOUD_MODEL."
     },
     "claude-sonnet-4-5": {
@@ -123,6 +133,8 @@
       "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "complex_implementation", "high_value_service_inquiry"],
       "avoid_for": ["routine_low_cost_fallback"],
       "routing_priority": 80,
+      "capabilities": ["chat", "tools", "rag_answering", "agentic_workflows"],
+      "tool_calling_quality": "strong",
       "context_window_tokens": 200000,
       "max_output_tokens": 64000,
       "description": "Claude Sonnet 4.5 — high-value cloud escalation"
@@ -145,6 +157,8 @@
       "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "complex_implementation", "long_context_reasoning", "frontend_design", "high_value_service_inquiry"],
       "avoid_for": ["routine_low_cost_fallback"],
       "routing_priority": 95,
+      "capabilities": ["chat", "tools", "rag_answering", "agentic_workflows"],
+      "tool_calling_quality": "strong",
       "context_window_tokens": 1000000,
       "max_output_tokens": 64000,
       "evidence": [
@@ -184,6 +198,8 @@
       "recommended_for": ["deep_reasoning", "critical_code_review", "large_refactor", "multi_agent_planning", "architecture_review", "failure_analysis", "high_stakes_reasoning", "complex_implementation"],
       "avoid_for": ["routine_low_cost_fallback", "simple_coding", "guided_intake"],
       "routing_priority": 90,
+      "capabilities": ["chat", "tools", "rag_answering", "agentic_workflows"],
+      "tool_calling_quality": "strong",
       "context_window_tokens": 1000000,
       "max_output_tokens": 128000,
       "evidence": [
