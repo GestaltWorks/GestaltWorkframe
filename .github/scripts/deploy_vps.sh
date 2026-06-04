@@ -147,7 +147,8 @@ rsync -az --delete \
   web/out/ "$SSH_TARGET:$WEB_DIR/out/"
 
 if [[ -n "${ROOT_SITE_DIR:-}" ]]; then
-  ssh_remote "sudo cp '$WEB_DIR/out/sitemap.xml' '$ROOT_SITE_DIR/sitemap.xml'"
+  ssh_remote "sudo mkdir -p '$ROOT_SITE_DIR'"
+  ssh_remote "if [[ -f '$WEB_DIR/out/sitemap.xml' ]]; then sudo cp '$WEB_DIR/out/sitemap.xml' '$ROOT_SITE_DIR/sitemap.xml'; fi"
   ssh_remote "if [[ -f '$WEB_DIR/out/robots.txt' ]]; then sudo cp '$WEB_DIR/out/robots.txt' '$ROOT_SITE_DIR/robots.txt'; fi"
   ssh_remote "if [[ -f '$WEB_DIR/out/llms.txt' ]]; then sudo cp '$WEB_DIR/out/llms.txt' '$ROOT_SITE_DIR/llms.txt'; fi"
 fi
