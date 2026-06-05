@@ -916,3 +916,73 @@ async def test_turn_orchestrator_uses_configured_service_handoff_url(monkeypatch
     await engine.run(decision, "Can you build this workflow for us?", [], "conv-1")
 
     assert any("https://example.test/contact" in msg["content"] for msg in router.calls[0]["messages"])
+
+
+async def test_turn_orchestrator_varies_directional_fallback_on_repeat():
+    # Regression: directional fallbacks used to be keyed only on intake and
+    # ignored the turn, so every ungrounded turn in a session emitted byte-
+    # identical text and read like a stuck loop. Once a directional fallback
+    # is already in the history, the next ungrounded turn must vary.
+    router = _Router(content=LEGACY_UNKNOWN_ANSWER)
+    retriever = _Retriever()
+    engine = ChatTurnOrchestrator(Orchestrator(), router, retriever)
+    message = "I am doing some tests to see if my automation system is working"
+    decision = engine.plan("automator", message, intake_complete=True)
+
+    first = await engine.run(decision, message, [], "conv-1")
+    history = [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": first.content},
+    ]
+    second = await engine.run(decision, message, history, "conv-1")
+
+    assert first.content.startswith("I did not find enough verified source context")
+    assert second.content.startswith("I still don't have a verified source")
+    assert second.content != first.content
+
+
+async def test_turn_orchestrator_streams_varied_directional_fallback_on_repeat():
+    router = _Router(content=LEGACY_UNKNOWN_ANSWER)
+    retriever = _Retriever()
+    engine = ChatTurnOrchestrator(Orchestrator(), router, retriever)
+    message = "I am doing some tests to see if my automation system is working"
+    decision = engine.plan("automator", message, intake_complete=True)
+    history = [
+        {"role": "user", "content": message},
+        {
+            "role": "assistant",
+            "content": "I did not find enough verified source context for a documentation-backed answer. ...",
+        },
+    ]
+
+    chunks = [chunk async for chunk in engine.stream(decision, message, history, "conv-1")]
+
+    assert len(chunks) == 1
+    assert chunks[0].startswith("I still don't have a verified source")
+
+
+def test_directional_fallback_repeat_count_counts_prior_fallbacks():
+    engine = ChatTurnOrchestrator(Orchestrator(), _Router(), _Retriever())
+    history = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "I did not find enough verified source context for a documentation-backed answer."},
+        {"role": "assistant", "content": "I still don't have a verified source for this, so this stays general guidance."},
+        {"role": "assistant", "content": "A normal grounded answer.\nSource: docs/x.md"},
+    ]
+
+    assert engine._directional_fallback_repeat_count(history) == 2
+    assert engine._directional_fallback_repeat_count([]) == 0
+    assert engine._directional_fallback_repeat_count(None) == 0
+
+
+def test_education_direction_fallback_varies_with_repeat():
+    engine = ChatTurnOrchestrator(Orchestrator(), _Router(), _Retriever())
+    decision = engine.plan("educator", "teach me about automation context", intake_complete=True)
+
+    base = engine._education_direction_fallback(decision, 0)
+    alt = engine._education_direction_fallback(decision, 1)
+
+    assert base.startswith("I did not find enough verified source context")
+    assert alt.startswith("I still don't have a verified source")
+    assert base != alt
+

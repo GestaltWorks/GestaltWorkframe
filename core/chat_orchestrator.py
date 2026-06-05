@@ -39,6 +39,30 @@ def _brand_short_name() -> str:
     return get_deployment_config().identity.short_name or "the team"
 RETRIEVAL_TOOLS = {KB_OVERVIEW, REFERENCE_SEARCH, WORKFLOW_PATTERN_SEARCH, LESSON_CONCEPT_SEARCH}
 
+# Directional fallbacks fire when a turn can't be grounded. They were keyed only
+# on the intake "building" answer and ignored the actual turn, so every
+# ungrounded turn in a session produced byte-identical text and read like a
+# stuck loop. The prefixes below let the orchestrator detect that a directional
+# fallback has already been shown this session; the nudge/angle lists drive a
+# varied follow-up so consecutive ungrounded turns are not identical.
+DIRECTIONAL_FALLBACK_PREFIXES = (
+    "I did not find enough verified source context",
+    "I still don't have a verified source",
+)
+_AUTOMATOR_REPEAT_NUDGES = (
+    "the exact error text, the trigger and target systems, or the step where it breaks",
+    "what you expected, what happened instead, and where in the run it diverged",
+)
+_EDUCATOR_REPEAT_ANGLES = (
+    "a plain definition, a worked example, or a common mistake to avoid",
+    "the simplest version first, then one real scenario, then a quick check question",
+)
+_GENERAL_REPEAT_NUDGES = (
+    "the outcome you want, the systems involved, and the exact point where it stops working",
+    "what changed most recently, what you already ruled out, and the smallest failing case",
+)
+
+
 # Quarantined-context content has no upstream length limit: a chatty
 # retriever, a tool result with a giant log, or a poisoned source could
 # trivially blow past the model's context window. Trim here so the
@@ -217,11 +241,12 @@ class ChatTurnOrchestrator:
                 if content != repaired:
                     grade = self.grader.grade(content, decision, retrieval)
                 if not grade.adequate:
-                    fallback = self._fallback_after_repair(content, grade, decision, retrieval, user_message)
+                    fallback = self._fallback_after_repair(content, grade, decision, retrieval, user_message, history)
                     if fallback != content:
                         content = fallback
                         grade = self.grader.grade(content, decision, retrieval)
             return TurnResult(content=content, decision=decision, answer_grade=grade, retrieval=retrieval)
+
 
         tools = self._tools_for_turn(decision)
 
@@ -237,7 +262,7 @@ class ChatTurnOrchestrator:
         )
         content = self._response_text(response)
         content = await self._retry_cloud_if_unknown(content, decision, messages, tools, session_id, user_message)
-        content = self._fallback_general_guidance(content, decision, retrieval, user_message)
+        content = self._fallback_general_guidance(content, decision, retrieval, user_message, history)
         grade = self.grader.grade(content, decision, retrieval)
         if not grade.adequate:
             repaired = self.grader.repair(content, grade)
@@ -245,7 +270,7 @@ class ChatTurnOrchestrator:
             if content != repaired:
                 grade = self.grader.grade(content, decision, retrieval)
             if not grade.adequate:
-                fallback = self._fallback_after_repair(content, grade, decision, retrieval, user_message)
+                fallback = self._fallback_after_repair(content, grade, decision, retrieval, user_message, history)
                 if fallback != content:
                     content = fallback
                     grade = self.grader.grade(content, decision, retrieval)
@@ -253,6 +278,7 @@ class ChatTurnOrchestrator:
         return TurnResult(content=content, decision=decision, answer_grade=grade, retrieval=retrieval)
 
     async def stream(
+
         self,
         decision: RoutingDecision,
         user_message: str,
@@ -327,10 +353,11 @@ class ChatTurnOrchestrator:
             yield buffered
 
         content = "".join(content_parts)
-        fallback = self._fallback_general_guidance(content, decision, retrieval, user_message)
+        fallback = self._fallback_general_guidance(content, decision, retrieval, user_message, history)
         if fallback != content:
             if emitted_any_chunk:
                 # The user has already seen `content`; deliver the repair
+
                 # as a clearly-labeled follow-up so they understand the
                 # earlier output was suppressed/refined by the quality gate.
                 yield self._stream_correction_separator() + fallback
@@ -350,10 +377,11 @@ class ChatTurnOrchestrator:
         if repaired != content:
             regrade = self.grader.grade(repaired, decision, retrieval)
             final_content = repaired if regrade.adequate else self._fallback_after_repair(
-                repaired, regrade, decision, retrieval, user_message,
+                repaired, regrade, decision, retrieval, user_message, history,
             )
         else:
-            final_content = self._fallback_after_repair(content, grade, decision, retrieval, user_message)
+            final_content = self._fallback_after_repair(content, grade, decision, retrieval, user_message, history)
+
 
         if final_content == content:
             # Repair produced no change relative to what the user already saw.
@@ -573,43 +601,80 @@ class ChatTurnOrchestrator:
         decision: RoutingDecision,
         retrieval: RetrievalResult | None,
         user_message: str,
+        history: list[Message] | None = None,
     ) -> str:
         if not is_unknown_answer(content):
             return content
         if decision.selected_mode == ChatMode.SERVICE:
             return self._service_discovery_fallback(decision)
+        # Vary the directional fallback once one has already been shown this
+        # session so consecutive ungrounded turns don't repeat verbatim.
+        repeat = self._directional_fallback_repeat_count(history)
         if decision.selected_mode == ChatMode.EDUCATOR:
-            return self._education_direction_fallback(decision)
+            return self._education_direction_fallback(decision, repeat)
         if decision.selected_mode == ChatMode.AUTOMATOR:
-            return self._automator_direction_fallback(decision)
-        return self._general_direction_fallback(decision)
+            return self._automator_direction_fallback(decision, repeat)
+        return self._general_direction_fallback(decision, repeat)
 
-    def _automator_direction_fallback(self, decision: RoutingDecision) -> str:
+    def _directional_fallback_repeat_count(self, history: list[Message] | None) -> int:
+        if not history:
+            return 0
+        count = 0
+        for message in history:
+            if message.get("role") != "assistant":
+                continue
+            text = str(message.get("content", "")).strip()
+            if any(text.startswith(prefix) for prefix in DIRECTIONAL_FALLBACK_PREFIXES):
+                count += 1
+        return count
+
+    def _automator_direction_fallback(self, decision: RoutingDecision, repeat: int = 0) -> str:
         focus = decision.intake.get("building", "the workflow or process you are working on")
         brand = _brand_short_name()
+        if repeat == 0:
+            return (
+                "I did not find enough verified source context for a documentation-backed answer. "
+                "General guidance, not a documentation claim: start by naming the trigger system, "
+                "the target system, what you expected, and what happened instead. For debugging, check event history, "
+                "auth/permission errors, required fields, branch conditions, and retry behavior. "
+                f"If {focus} is production-facing or client-facing, bring in a human consultant or ask {brand} to scope/debug it with you."
+            )
+        nudge = _AUTOMATOR_REPEAT_NUDGES[(repeat - 1) % len(_AUTOMATOR_REPEAT_NUDGES)]
         return (
-            "I did not find enough verified source context for a documentation-backed answer. "
-            "General guidance, not a documentation claim: start by naming the trigger system, "
-            "the target system, what you expected, and what happened instead. For debugging, check event history, "
-            "auth/permission errors, required fields, branch conditions, and retry behavior. "
-            f"If {focus} is production-facing or client-facing, bring in a human consultant or ask {brand} to scope/debug it with you."
+            "I still don't have a verified source for this, so this stays general guidance, not a documentation claim. "
+            f"Give me one concrete detail and I can get specific: {nudge}. "
+            f"If {focus} is production-facing, looping in a human consultant or asking {brand} to scope it is the safer next step."
         )
 
-    def _education_direction_fallback(self, decision: RoutingDecision) -> str:
+    def _education_direction_fallback(self, decision: RoutingDecision, repeat: int = 0) -> str:
         topic = decision.intake.get("building", "the concept or workflow you are trying to learn")
+        if repeat == 0:
+            return (
+                "I did not find enough verified source context for a documentation-backed answer. "
+                "General guidance, not a documentation claim: we can still turn this into a lesson. "
+                f"For {topic}, start by describing what you already know, what confused you, and one concrete example. "
+                "I can explain the concept, ask a few checks, then give you a small practice task."
+            )
+        angle = _EDUCATOR_REPEAT_ANGLES[(repeat - 1) % len(_EDUCATOR_REPEAT_ANGLES)]
         return (
-            "I did not find enough verified source context for a documentation-backed answer. "
-            "General guidance, not a documentation claim: we can still turn this into a lesson. "
-            f"For {topic}, start by describing what you already know, what confused you, and one concrete example. "
-            "I can explain the concept, ask a few checks, then give you a small practice task."
+            "I still don't have a verified source for this, so treat this as general guidance, not a documentation claim. "
+            f"Pick one angle for {topic} and I'll take it: {angle}. "
+            "Add one concrete detail and I'll build the explanation around it."
         )
 
-    def _general_direction_fallback(self, decision: RoutingDecision) -> str:
+    def _general_direction_fallback(self, decision: RoutingDecision, repeat: int = 0) -> str:
         focus = decision.intake.get("building", "the issue you are working through")
+        if repeat == 0:
+            return (
+                "I did not find enough verified source context for a documentation-backed answer. "
+                "General guidance, not a documentation claim: define the desired outcome, list the systems involved, "
+                f"and capture the exact point where {focus} stops working. If it is urgent or unclear, talk it through with a human operator or consultant before changing production."
+            )
+        nudge = _GENERAL_REPEAT_NUDGES[(repeat - 1) % len(_GENERAL_REPEAT_NUDGES)]
         return (
-            "I did not find enough verified source context for a documentation-backed answer. "
-            "General guidance, not a documentation claim: define the desired outcome, list the systems involved, "
-            f"and capture the exact point where {focus} stops working. If it is urgent or unclear, talk it through with a human operator or consultant before changing production."
+            "I still don't have a verified source for this, so this is general guidance, not a documentation claim. "
+            f"Narrow it for me: {nudge}. "
+            f"With one of those I can give a sharper direction on {focus}."
         )
 
     def _fallback_after_repair(
@@ -619,18 +684,20 @@ class ChatTurnOrchestrator:
         decision: RoutingDecision,
         retrieval: RetrievalResult | None,
         user_message: str,
+        history: list[Message] | None = None,
     ) -> str:
         if grade.reason == "forbidden_service_commercial_claim" and decision.selected_mode == ChatMode.SERVICE:
             return self._service_pricing_fallback(decision)
         if is_unknown_answer(content):
             if decision.selected_mode == ChatMode.SERVICE:
                 return self._service_discovery_fallback(decision)
-            return self._fallback_general_guidance(content, decision, retrieval, user_message)
+            return self._fallback_general_guidance(content, decision, retrieval, user_message, history)
         if decision.selected_mode == ChatMode.SERVICE:
             return self._service_discovery_fallback(decision)
         if grade.reason not in {"missing_citation", "no_retrieval_context"}:
             return content
-        return self._fallback_general_guidance(content, decision, retrieval, user_message)
+        return self._fallback_general_guidance(content, decision, retrieval, user_message, history)
+
 
     async def _retry_cloud_if_unknown(
         self,
