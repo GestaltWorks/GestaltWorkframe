@@ -637,6 +637,28 @@ class LLMRouter:
             return True
         return self._breaker_open and route.provider is self.primary
 
+    async def _local_route_callable(self, route: ProviderRoute) -> bool:
+        """Fast health gate for a local route before a full chat attempt.
+
+        Route selection (_ordered_routes) does not probe provider health, so a
+        down local endpoint would otherwise be ordered first, selected, and
+        block the caller for the provider's full chat timeout (tens of seconds)
+        before raising and falling through to cloud. Probing here via the
+        short-timeout, TTL-cached _provider_health lets the router skip a
+        known-down local route in well under a second and escalate to an
+        eligible cloud route immediately. Cloud routes are never gated here;
+        on any probe error we fail open so a flaky probe degrades to the prior
+        attempt-and-fail behavior instead of dropping the only local route.
+        """
+        if route.is_cloud or route.provider is None:
+            return True
+        try:
+            health = await self._provider_health(route)
+        except Exception:
+            logger.warning("Local health gate probe failed for %s; attempting anyway.", route.name)
+            return True
+        return bool(health.get("model_available"))
+
     def circuit_breaker_status(self) -> dict[str, Any]:
         return {
             "open": self._breaker_open,
@@ -835,6 +857,10 @@ class LLMRouter:
                         yield self._response_text(response)
                         return
                 continue
+            if not await self._local_route_callable(route):
+                # Local endpoint down/unavailable: skip without paying the
+                # provider full chat timeout so the loop escalates to cloud.
+                continue
             try:
                 async with self._generation_slot(route, diagnostics) as started:
                     if not started:
@@ -888,6 +914,10 @@ class LLMRouter:
         )
         for route in ordered_routes:
             if route.provider is None:
+                continue
+            if not route.is_cloud and not await self._local_route_callable(route):
+                # Local endpoint down/unavailable: skip the full-timeout chat
+                # attempt so the loop escalates to an eligible cloud route.
                 continue
             try:
                 async with self._generation_slot(route, diagnostics) as started:
