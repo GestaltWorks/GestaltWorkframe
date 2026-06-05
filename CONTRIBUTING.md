@@ -75,3 +75,11 @@ Do not copy code between the two halves without checking that the source
 license permits it. Apache-2.0 code may flow into the FSL framework
 freely; FSL code may not flow into `packages/` without a separate
 relicensing decision.
+
+## Source-of-truth: framework vs. reference implementation
+
+GestaltWorkframe is the framework; EGI_bot is its reference
+implementation. Framework/engine changes (router, providers,
+orchestrator, runtime, retrieval, policy) MUST originate here and be
+ported into EGI_bot -- never the reverse. See
+`docs/framework-vs-reference-implementation.md`.
