@@ -58,9 +58,17 @@ class ProviderRoute:
     enabled_by_default: bool = True
     capabilities: list[str] = field(default_factory=list)
     tool_calling_quality: str = "none"
+    input_price_usd_per_million: float = 0.0
+    output_price_usd_per_million: float = 0.0
 
     @property
     def is_cloud(self) -> bool:
+        # "free" tier routes (e.g. OpenRouter free models) are treated as non-cloud:
+        # they do not require ENABLE_CLOUD_SPILLOVER and are not subject to USD caps.
+        return self.cost_tier in {"low_cost", "premium"}
+
+    @property
+    def is_metered(self) -> bool:
         return self.cost_tier in {"low_cost", "premium"}
 
     @property
@@ -745,6 +753,8 @@ class LLMRouter:
                 model=route.model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                input_price_usd_per_million=route.input_price_usd_per_million or None,
+                output_price_usd_per_million=route.output_price_usd_per_million or None,
             )
         return response
 

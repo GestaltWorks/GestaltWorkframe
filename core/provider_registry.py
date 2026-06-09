@@ -6,6 +6,9 @@ from core.model_profile import GenerationParams, ModelProfile, ProfileStore, get
 from core.providers import ClaudeProvider, LocalProvider, LLMProvider, OllamaProvider, OpenAICompatibleProvider
 from core.router import ProviderRoute
 
+_OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -151,6 +154,11 @@ class ProviderRegistry:
             if profile.provider == "openai_compatible"
         )
         routes.extend(
+            self._route_from_openrouter_profile(profile)
+            for profile in self.store.profiles()
+            if profile.provider == "openrouter"
+        )
+        routes.extend(
             self._route_from_claude_profile(profile)
             for profile in self.store.profiles()
             if profile.provider == "claude"
@@ -224,6 +232,20 @@ class ProviderRegistry:
         self._attach_model_profile(provider, profile)
         return self._route_from_model_profile(profile, provider, configured=True, model=model)
 
+    def _route_from_openrouter_profile(self, profile: ModelProfile) -> ProviderRoute:
+        # api_key_env overrides OPENROUTER_API_KEY when set on the profile.
+        key_env = profile.api_key_env or "OPENROUTER_API_KEY"
+        api_key = _env_text(key_env)
+        # base_url defaults to the canonical OpenRouter endpoint unless overridden.
+        base_url_env_val = _env_text(profile.base_url_env) if profile.base_url_env else ""
+        base_url = base_url_env_val or profile.base_url or _env_text("OPENROUTER_BASE_URL", _OPENROUTER_DEFAULT_BASE_URL)
+        model = _env_text(profile.model_env, profile.model) if profile.model_env else profile.model
+        if not api_key:
+            return self._route_from_model_profile(profile, None, configured=False, blocked_reason="missing_api_key", model=model)
+        provider = OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model, params=profile.params)
+        self._attach_model_profile(provider, profile)
+        return self._route_from_model_profile(profile, provider, configured=True, model=model)
+
     def _route_from_provider(
         self,
         name: str,
@@ -268,10 +290,12 @@ class ProviderRegistry:
             configured=configured,
             blocked_reason=blocked_reason,
             deployment_status=profile.deployment_status,
-            runtime_group=profile.runtime_group or ("cloud" if profile.cost_tier in {"low_cost", "premium"} else "personal_gpu"),
+            runtime_group=profile.runtime_group or ("cloud" if profile.cost_tier in {"low_cost", "premium"} else "openrouter" if profile.provider == "openrouter" else "personal_gpu"),
             enabled_by_default=profile.route_enabled_by_default(),
             capabilities=profile.capabilities,
             tool_calling_quality=profile.tool_calling_quality,
+            input_price_usd_per_million=profile.input_price_usd_per_million,
+            output_price_usd_per_million=profile.output_price_usd_per_million,
         )
 
     def _attach_model_profile(self, provider: LLMProvider, profile: ModelProfile) -> None:

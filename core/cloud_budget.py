@@ -171,6 +171,8 @@ class CloudBudgetGate:
         model: str,
         input_tokens: int | None,
         output_tokens: int | None,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
     ) -> CloudBudgetDecision:
         if not self.config.enabled:
             return CloudBudgetDecision(allowed=True, reason="cloud_spillover_disabled")
@@ -186,8 +188,8 @@ class CloudBudgetGate:
         try:
             async with aiosqlite.connect(self.config.sqlite_path) as db:
                 now = datetime.now(timezone.utc).isoformat()
-                input_cost = self._input_cost(input_tokens)
-                output_cost = self._output_cost(output_tokens)
+                input_cost = self._input_cost(input_tokens, input_price_usd_per_million)
+                output_cost = self._output_cost(output_tokens, output_price_usd_per_million)
                 total_cost = input_cost + output_cost
                 await db.execute(
                     """
@@ -430,11 +432,13 @@ class CloudBudgetGate:
             self._store_error = type(exc).__name__
             return ""
 
-    def _input_cost(self, tokens: int) -> float:
-        return tokens / 1_000_000 * self.config.input_price_usd_per_million
+    def _input_cost(self, tokens: int, price_override: float | None = None) -> float:
+        rate = price_override if price_override is not None else self.config.input_price_usd_per_million
+        return tokens / 1_000_000 * rate
 
-    def _output_cost(self, tokens: int) -> float:
-        return tokens / 1_000_000 * self.config.output_price_usd_per_million
+    def _output_cost(self, tokens: int, price_override: float | None = None) -> float:
+        rate = price_override if price_override is not None else self.config.output_price_usd_per_million
+        return tokens / 1_000_000 * rate
 
     def _session_key(self, session_id: str | None) -> str:
         return f"session:{session_id or 'anonymous'}"

@@ -264,7 +264,10 @@ def test_repository_gemini_cloud_profile_is_api_backed_not_local():
     assert profile["cost_tier"] == "low_cost"
     assert profile["api_key_env"] == "GEMINI_CLOUD_API_KEY"
     assert profile["base_url_env"] == "GEMINI_CLOUD_BASE_URL"
-    assert profile["enabled_by_default"] is True
+    # gemini-cloud is a disabled bolt-on; operators enable it by setting GEMINI_CLOUD_* vars
+    # and flipping deployment_status in profiles.json.
+    assert profile["deployment_status"] == "disabled"
+    assert profile["enabled_by_default"] is False
 
 
 def test_claude_review_default_matches_sonnet_46_profile_and_workflow():

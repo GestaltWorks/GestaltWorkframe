@@ -24,14 +24,17 @@ class ModelEvidence(BaseModel):
 
 class ModelProfile(BaseModel):
     name: str
-    provider: Literal["llama_cpp", "ollama", "claude", "openai_compatible"]
+    provider: Literal["llama_cpp", "ollama", "claude", "openai_compatible", "openrouter"]
     model: str
     base_url: str = ""
     model_env: str = ""
     base_url_env: str = ""
     api_key_env: str = ""
     role: Literal["primary", "secondary", "escalation"] = "primary"
-    cost_tier: Literal["local", "low_cost", "premium"] = "local"
+    cost_tier: Literal["local", "free", "low_cost", "premium"] = "local"
+    # Per-profile pricing (USD per million tokens). 0.0 = free / unknown.
+    input_price_usd_per_million: float = 0.0
+    output_price_usd_per_million: float = 0.0
     deployment_status: Literal["active", "candidate", "disabled"] = "active"
     runtime_group: str = ""
     enabled_by_default: bool | None = None
@@ -51,6 +54,10 @@ class ModelProfile(BaseModel):
         if self.enabled_by_default is not None:
             return self.enabled_by_default
         return self.deployment_status != "disabled"
+
+    @property
+    def is_free(self) -> bool:
+        return self.cost_tier in {"local", "free"}
 
 
 _DEFAULT_PROFILES_PATH = Path(__file__).parent.parent / "llm" / "profiles.json"
