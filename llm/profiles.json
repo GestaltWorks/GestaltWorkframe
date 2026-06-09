@@ -25,11 +25,11 @@
       "capabilities": ["chat", "rag_answering"],
       "tool_calling_quality": "none",
       "context_window_tokens": 200000,
-      "description": "OpenRouter automatic free-model router — catch-all for routine turns when a specific model is not required."
+      "description": "Owl Alpha (openrouter/owl-alpha:free) — OpenRouter's own free flagship, 1M context, native tool calling, top free-tier by weekly usage. Catch-all for routine turns."
     },
     "openrouter-nemotron-super": {
       "provider": "openrouter",
-      "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+      "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
       "api_key_env": "OPENROUTER_API_KEY",
       "role": "primary",
       "cost_tier": "free",
@@ -61,11 +61,11 @@
       "tool_calling_quality": "ok",
       "context_window_tokens": 1000000,
       "max_output_tokens": 8192,
-      "description": "NVIDIA Nemotron 3 Super (free via OpenRouter) — 120B MoE, 1M context, strong agentic + tool calling, free tier."
+      "description": "NVIDIA Llama 3.1 Nemotron Ultra 253B v1 (nvidia/llama-3.1-nemotron-ultra-253b-v1:free) — strong RAG + tool calling, 131K context, free tier."
     },
     "openrouter-gpt-oss-20b": {
       "provider": "openrouter",
-      "model": "openai/gpt-oss-20b",
+      "model": "openai/gpt-oss-20b:free",
       "api_key_env": "OPENROUTER_API_KEY",
       "role": "primary",
       "cost_tier": "free",
@@ -100,7 +100,7 @@
     },
     "openrouter-gpt-oss-120b": {
       "provider": "openrouter",
-      "model": "openai/gpt-oss-120b",
+      "model": "openai/gpt-oss-120b:free",
       "api_key_env": "OPENROUTER_API_KEY",
       "role": "secondary",
       "cost_tier": "free",
@@ -136,7 +136,7 @@
     },
     "openrouter-laguna-m1": {
       "provider": "openrouter",
-      "model": "poolside/laguna-m1",
+      "model": "poolside/laguna-m.1:free",
       "api_key_env": "OPENROUTER_API_KEY",
       "role": "secondary",
       "cost_tier": "free",
@@ -168,7 +168,7 @@
       "tool_calling_quality": "strong",
       "context_window_tokens": 262144,
       "max_output_tokens": 8192,
-      "description": "Poolside Laguna M.1 (free via OpenRouter) — flagship coding agent, tool calling, 262K context, fp8 quantized, free tier."
+      "description": "Poolside Laguna M.1 (poolside/laguna-m.1:free) — flagship coding agent, tool calling, 262K context, fp8 quantized, free tier."
     },
     "openrouter-deepseek-v4-flash": {
       "provider": "openrouter",
