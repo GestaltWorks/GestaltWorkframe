@@ -30,9 +30,11 @@ from typing import Any
 from fastapi import Depends, Header, HTTPException, Request
 
 from core.chat_orchestrator import ChatTurnOrchestrator
-from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate
+from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
 from core.orchestrator import Orchestrator
 from core.policy import CloudSpendPolicy
+from core.key_store import ApiKeyStore
+from core.provider_balance import OpenRouterBalanceChecker
 from core.provider_registry import ProviderRegistry
 from core.retrieval import KnowledgeRetriever
 from core.router import LLMRouter
@@ -116,10 +118,12 @@ class ChatMetrics:
 class AppServices:
     local_provider: Any
     secondary_provider: Any | None
-    cloud_budget: CloudBudgetGate
+    cloud_budget: CloudBudgetGate | MultiProviderBudgetGate
     llm_router: LLMRouter
     orchestrator: Orchestrator
     chat_turns: ChatTurnOrchestrator
+    balance_checker: OpenRouterBalanceChecker | None = None
+    key_store: ApiKeyStore | None = None
     chat_metrics: ChatMetrics = field(default_factory=ChatMetrics)
 
     async def close(self) -> None:
@@ -136,7 +140,12 @@ async def build_app_services() -> AppServices:
     if local_provider is None:
         local_provider = registry.build_primary()
     secondary_provider = next((route.provider for route in routes if route.provider and route.is_cloud), None)
-    cloud_budget = CloudBudgetGate(CloudBudgetConfig.from_env())
+    _global_gate = CloudBudgetGate(CloudBudgetConfig.from_env())
+    cloud_budget = MultiProviderBudgetGate.from_env(_global_gate)
+    _or_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    balance_checker = OpenRouterBalanceChecker(_or_key) if _or_key else None
+    _db_path = os.getenv("CLOUD_SPILLOVER_DB_PATH", os.getenv("APP_DATABASE_PATH", "database.db")).strip() or "database.db"
+    key_store = ApiKeyStore(_db_path)
     runtime_manager = RuntimeManager(RuntimeControlPolicy.from_env())
     llm_router = LLMRouter(
         primary=local_provider,
@@ -149,7 +158,7 @@ async def build_app_services() -> AppServices:
     )
     orchestrator = Orchestrator(CloudSpendPolicy.from_env())
     chat_turns = ChatTurnOrchestrator(orchestrator, llm_router, KnowledgeRetriever())
-    return AppServices(local_provider, secondary_provider, cloud_budget, llm_router, orchestrator, chat_turns, ChatMetrics())
+    return AppServices(local_provider, secondary_provider, cloud_budget, llm_router, orchestrator, chat_turns, balance_checker, key_store, ChatMetrics())
 
 
 def get_app_services(request: Request) -> AppServices:

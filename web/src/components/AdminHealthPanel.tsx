@@ -6,6 +6,7 @@ import { apiUrl } from "@/lib/api";
 import type {
   HandoffPacket,
   ProviderHealth,
+  ProviderKeysPayload,
 } from "./admin/health/types";
 import {
   apiTargetLabel,
@@ -25,6 +26,8 @@ import {
   Metric,
   ModelGroup,
   NumberField,
+  ProviderBudgetsSection,
+  ProviderKeysSection,
   Toggle,
   TopList,
 } from "./admin/health/parts";
@@ -39,6 +42,9 @@ export default function AdminHealthPanel() {
   const [handoffs, setHandoffs] = useState<HandoffPacket[]>([]);
   const [chatMetricsOpen, setChatMetricsOpen] = useState(false);
   const [handoffsOpen, setHandoffsOpen] = useState(false);
+  const [budgetsOpen, setBudgetsOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [providerKeys, setProviderKeys] = useState<ProviderKeysPayload | null>(null);
   const [policyOpen, setPolicyOpen] = useState(true);
   const [runbookOpen, setRunbookOpen] = useState(false);
   const [localModelsOpen, setLocalModelsOpen] = useState(false);
@@ -82,6 +88,42 @@ export default function AdminHealthPanel() {
 
   const refreshHandoffs = () => {
     loadHandoffs().catch((err) => setError(err instanceof Error ? err.message : "Failed to load handoff packets"));
+  };
+
+  const loadProviderKeys = async () => {
+    const response = await fetch(apiUrl("/admin/api/provider-keys"), { cache: "no-store", headers: adminHeaders() });
+    if (!response.ok) throw new Error(await responseError(response, `Provider keys fetch failed HTTP ${response.status}`));
+    setProviderKeys(await response.json() as ProviderKeysPayload);
+  };
+
+  const setProviderKey = async (provider_id: string, key: string): Promise<string | null> => {
+    try {
+      const response = await fetch(apiUrl(`/admin/api/provider-keys/${provider_id}`), {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ key }),
+      });
+      if (!response.ok) return await responseError(response, `HTTP ${response.status}`);
+      await loadProviderKeys();
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : "Failed to save key";
+    }
+  };
+
+  const deleteProviderKey = async (provider_id: string) => {
+    try {
+      await fetch(apiUrl(`/admin/api/provider-keys/${provider_id}`), { method: "DELETE", headers: adminHeaders() });
+      await loadProviderKeys();
+    } catch {
+      // silent -- key may already be gone
+    }
+  };
+
+  const patchProviderBudget = async (provider_id: string, max_daily_usd: number, max_monthly_usd: number) => {
+    await patchPolicy({
+      provider_budgets: { [provider_id]: { max_daily_usd, max_monthly_usd } },
+    });
   };
 
   const patchPolicy = async (patch: Record<string, unknown>) => {
@@ -272,6 +314,50 @@ export default function AdminHealthPanel() {
                       <p className="rounded-xl border border-brand-gold-warm/15 bg-black/25 p-4 text-xs text-brand-offwhite/38">No handoff packets recorded yet.</p>
                     )}
                   </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Provider budgets"
+              summary={health.cloud_budget?.providers ? `${Object.keys(health.cloud_budget.providers).length} providers tracked` : "Per-provider USD caps and balance"}
+              open={budgetsOpen}
+              onToggle={() => {
+                const opening = !budgetsOpen;
+                setBudgetsOpen(opening);
+              }}
+            >
+              {health.cloud_budget?.providers ? (
+                <ProviderBudgetsSection
+                  providers={health.cloud_budget.providers}
+                  disabled={busy}
+                  onPatchBudget={patchProviderBudget}
+                />
+              ) : (
+                <p className="text-xs text-brand-offwhite/38">No per-provider budget data in health snapshot. Reload health to fetch.</p>
+              )}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Provider API keys"
+              summary={providerKeys ? `${Object.values(providerKeys.providers).filter((s) => s.has_stored_key || s.has_env_key).length} of ${Object.keys(providerKeys.providers).length} configured` : "Encrypted key store"}
+              open={keysOpen}
+              onToggle={() => {
+                const opening = !keysOpen;
+                setKeysOpen(opening);
+                if (opening && !providerKeys) {
+                  loadProviderKeys().catch((err) => setError(err instanceof Error ? err.message : "Failed to load provider keys"));
+                }
+              }}
+            >
+              {providerKeys ? (
+                <ProviderKeysSection
+                  providers={providerKeys.providers}
+                  disabled={busy}
+                  onSetKey={setProviderKey}
+                  onDeleteKey={(pid) => { deleteProviderKey(pid).catch(() => undefined); }}
+                />
+              ) : (
+                <p className="text-xs text-brand-offwhite/38">Loading provider key status...</p>
+              )}
             </CollapsibleSection>
 
             {policy && (

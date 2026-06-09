@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.cloud_budget import CloudBudgetGate
+from core.cloud_budget import CloudBudgetGate, MultiProviderBudgetGate
 from core.providers import LLMProvider
 from core.runtime import GenerationConcurrencyPolicy, RuntimeManager
 
@@ -58,9 +58,19 @@ class ProviderRoute:
     enabled_by_default: bool = True
     capabilities: list[str] = field(default_factory=list)
     tool_calling_quality: str = "none"
+    input_price_usd_per_million: float = 0.0
+    output_price_usd_per_million: float = 0.0
+    provider_budget_id: str = "default"
+    preferred_provider_id: str = ""
 
     @property
     def is_cloud(self) -> bool:
+        # "free" tier routes (e.g. OpenRouter free models) are treated as non-cloud:
+        # they do not require ENABLE_CLOUD_SPILLOVER and are not subject to USD caps.
+        return self.cost_tier in {"low_cost", "premium"}
+
+    @property
+    def is_metered(self) -> bool:
         return self.cost_tier in {"low_cost", "premium"}
 
     @property
@@ -529,6 +539,12 @@ class LLMRouter:
                 self._cached_provider_health(route),
                 route_enabled=self.route_enabled(route.name),
             )
+        # Blast-radius preference bonus: prefer the direct provider over
+        # OpenRouter aggregation when the direct-provider budget has headroom.
+        # Bonus of 50 * headroom (0-50 pts) tiebreaks same-tier same-task
+        # routes and backs off automatically as the direct cap is consumed.
+        if route.preferred_provider_id and route.preferred_provider_id == route.provider_budget_id:
+            score += int(50 * self.provider_budget_headroom(route.preferred_provider_id))
         return score
 
     def _task_matches(self, task: str | None, tags: list[str]) -> bool:
@@ -700,6 +716,18 @@ class LLMRouter:
             if route.provider is self.primary:
                 await self._trip_breaker()
 
+    def provider_budget_headroom(self, provider_id: str) -> float:
+        """Return cached 0.0-1.0 daily cap headroom for provider_id.
+
+        Reads from MultiProviderBudgetGate._headroom_cache populated by
+        refresh_headroom_cache() at the start of each _ordered_routes() call.
+        Returns 1.0 when no multi gate is configured or provider has no cap.
+        """
+        from core.cloud_budget import MultiProviderBudgetGate
+        if not isinstance(self.cloud_budget, MultiProviderBudgetGate):
+            return 1.0
+        return self.cloud_budget.headroom(provider_id)
+
     async def _cloud_spend_allowed(
         self,
         route: ProviderRoute,
@@ -714,7 +742,12 @@ class LLMRouter:
             logger.warning("Cloud escalation blocked: no budget gate configured.")
             return False
 
-        decision = await self.cloud_budget.reserve(
+        gate = (
+            self.cloud_budget.gate_for(route.provider_budget_id)
+            if isinstance(self.cloud_budget, MultiProviderBudgetGate)
+            else self.cloud_budget
+        )
+        decision = await gate.reserve(
             session_id,
             estimated_input_tokens=self._estimate_input_tokens(messages),
             requested_output_tokens=self._cloud_max_tokens(route),
@@ -739,13 +772,27 @@ class LLMRouter:
         )
         if self.cloud_budget:
             input_tokens, output_tokens = self._extract_usage(response)
-            await self.cloud_budget.record_usage(
-                session_id,
-                provider=route.provider.__class__.__name__,
-                model=route.model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-            )
+            if isinstance(self.cloud_budget, MultiProviderBudgetGate):
+                await self.cloud_budget.record_usage(
+                    session_id,
+                    provider=route.provider.__class__.__name__,
+                    model=route.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    input_price_usd_per_million=route.input_price_usd_per_million or None,
+                    output_price_usd_per_million=route.output_price_usd_per_million or None,
+                    provider_id=route.provider_budget_id,
+                )
+            else:
+                await self.cloud_budget.record_usage(
+                    session_id,
+                    provider=route.provider.__class__.__name__,
+                    model=route.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    input_price_usd_per_million=route.input_price_usd_per_million or None,
+                    output_price_usd_per_million=route.output_price_usd_per_million or None,
+                )
         return response
 
     def _cloud_max_tokens(self, route: ProviderRoute) -> int:
@@ -836,6 +883,12 @@ class LLMRouter:
 
         sent_primary_chunk = False
         require_tools = bool(tools)
+        from core.cloud_budget import MultiProviderBudgetGate
+        if isinstance(self.cloud_budget, MultiProviderBudgetGate):
+            try:
+                await self.cloud_budget.refresh_headroom_cache()
+            except Exception:
+                pass
         ordered_routes, diagnostics = self._ordered_routes(
             force_secondary,
             cloud_allowed,
@@ -904,6 +957,12 @@ class LLMRouter:
         await self._reset_breaker_if_healthy()
 
         require_tools = bool(tools)
+        from core.cloud_budget import MultiProviderBudgetGate
+        if isinstance(self.cloud_budget, MultiProviderBudgetGate):
+            try:
+                await self.cloud_budget.refresh_headroom_cache()
+            except Exception:
+                pass
         ordered_routes, diagnostics = self._ordered_routes(
             force_secondary,
             cloud_allowed,

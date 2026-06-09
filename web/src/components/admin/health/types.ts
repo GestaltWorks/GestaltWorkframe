@@ -14,6 +14,7 @@ export type AdminPolicy = {
   max_input_tokens_per_call: number;
   max_output_tokens_per_call: number;
   route_overrides: Record<string, boolean>;
+  provider_budgets?: Record<string, { max_daily_usd: number; max_monthly_usd: number }>;
 };
 
 export type ChatMetrics = {
@@ -40,11 +41,54 @@ export type GenerationConcurrency = {
   max_cloud?: number;
 };
 
+export type BalanceData = {
+  provider_id: string;
+  available: boolean;
+  source: string;
+  limit_usd: number;
+  used_usd: number;
+  remaining_usd: number;
+  is_free_tier: boolean;
+  checked_at: number;
+  error: string;
+};
+
+export type ProviderBudgetEntry = {
+  enabled: boolean;
+  max_daily_usd: number;
+  max_monthly_usd: number;
+  used: {
+    day_usd: number;
+    month_usd: number;
+    day_calls: number;
+    month_calls: number;
+  };
+  balance?: BalanceData;
+};
+
+export type ProviderKeyStatus = {
+  has_stored_key: boolean;
+  has_env_key: boolean;
+  active_source: "store" | "env" | "none";
+};
+
+export type ProviderKeysPayload = {
+  providers: Record<string, ProviderKeyStatus>;
+};
+
+export type CloudBudgetSnapshot = {
+  enabled?: boolean;
+  configured?: boolean;
+  accounting_blocked?: boolean;
+  store_ready?: boolean;
+  providers?: Record<string, ProviderBudgetEntry>;
+};
+
 export type ProviderHealth = {
   status: string;
   models?: ProviderStatus[];
   policy?: AdminPolicy;
-  cloud_budget?: Record<string, unknown>;
+  cloud_budget?: CloudBudgetSnapshot;
   circuit_breaker?: Record<string, unknown>;
   generation_concurrency?: GenerationConcurrency;
   route_diagnostics?: Record<string, unknown>;

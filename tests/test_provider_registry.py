@@ -220,3 +220,166 @@ def test_profile_store_logs_bad_profile_json(caplog, tmp_path: Path):
 
     assert store.profiles() == []
     assert "Failed to load model profiles" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# provider_budget_id assignment tests
+# ---------------------------------------------------------------------------
+
+def test_openrouter_route_gets_openrouter_budget_id(tmp_path):
+    profiles_path = tmp_path / "profiles.json"
+    import json
+    profiles_path.write_text(json.dumps({
+        "profiles": {
+            "or-free": {
+                "provider": "openrouter",
+                "model": "openrouter/auto",
+                "api_key_env": "OR_KEY",
+                "role": "primary",
+                "cost_tier": "free",
+                "deployment_status": "active",
+                "enabled_by_default": True,
+                "allowed_response_policies": ["local_only"],
+            },
+        }
+    }), encoding="utf-8")
+    with patch.dict("os.environ", {"OR_KEY": "sk-or-test"}, clear=False):
+        routes = ProviderRegistry(store=ProfileStore(path=profiles_path)).build_routes()
+    assert len(routes) == 1
+    assert routes[0].provider_budget_id == "openrouter"
+
+
+def test_claude_route_gets_anthropic_budget_id(tmp_path):
+    profiles_path = tmp_path / "profiles.json"
+    import json
+    profiles_path.write_text(json.dumps({
+        "profiles": {
+            "claude-haiku": {
+                "provider": "claude",
+                "model": "claude-haiku-4-5-20251001",
+                "role": "secondary",
+                "cost_tier": "low_cost",
+                "deployment_status": "active",
+                "enabled_by_default": True,
+                "allowed_response_policies": ["local_then_low_cost"],
+            },
+        }
+    }), encoding="utf-8")
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=False):
+        routes = ProviderRegistry(store=ProfileStore(path=profiles_path)).build_routes()
+    assert len(routes) == 1
+    assert routes[0].provider_budget_id == "anthropic"
+
+
+def test_gemini_route_gets_google_budget_id(tmp_path):
+    profiles_path = tmp_path / "profiles.json"
+    import json
+    profiles_path.write_text(json.dumps({
+        "profiles": {
+            "gemini-cloud": {
+                "provider": "openai_compatible",
+                "model": "gemini-2.5-flash",
+                "role": "secondary",
+                "cost_tier": "low_cost",
+                "deployment_status": "active",
+                "enabled_by_default": True,
+                "allowed_response_policies": ["local_then_low_cost"],
+                "api_key_env": "GEMINI_CLOUD_API_KEY",
+                "base_url_env": "GEMINI_CLOUD_BASE_URL",
+            },
+        }
+    }), encoding="utf-8")
+    with patch.dict("os.environ", {
+        "GEMINI_CLOUD_API_KEY": "sk-google-test",
+        "GEMINI_CLOUD_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/openai",
+    }, clear=False):
+        routes = ProviderRegistry(store=ProfileStore(path=profiles_path)).build_routes()
+    assert len(routes) == 1
+    assert routes[0].provider_budget_id == "google"
+
+
+def test_local_route_gets_default_budget_id(tmp_path):
+    profiles_path = tmp_path / "profiles.json"
+    import json
+    profiles_path.write_text(json.dumps({
+        "profiles": {
+            "llama-local": {
+                "provider": "llama_cpp",
+                "model": "llama-3.1-8b",
+                "role": "primary",
+                "cost_tier": "local",
+                "deployment_status": "active",
+                "enabled_by_default": True,
+                "allowed_response_policies": ["local_only"],
+                "base_url": "http://localhost:8080/v1",
+            },
+        }
+    }), encoding="utf-8")
+    routes = ProviderRegistry(store=ProfileStore(path=profiles_path)).build_routes()
+    assert len(routes) == 1
+    assert routes[0].provider_budget_id == "default"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 - preferred_provider_id passthrough tests
+# ---------------------------------------------------------------------------
+
+def test_preferred_provider_id_passed_through_for_openrouter_claude(tmp_path):
+    """preferred_provider_id on a profile flows through to the ProviderRoute."""
+    import json
+    profiles_path = tmp_path / "profiles.json"
+    profiles_path.write_text(json.dumps({
+        "profiles": {
+            "openrouter-claude-sonnet": {
+                "provider": "openrouter",
+                "model": "anthropic/claude-sonnet-4",
+                "api_key_env": "OR_KEY",
+                "role": "secondary",
+                "cost_tier": "premium",
+                "deployment_status": "active",
+                "enabled_by_default": True,
+                "allowed_response_policies": ["local_then_low_cost"],
+                "preferred_provider_id": "anthropic",
+            },
+        }
+    }), encoding="utf-8")
+    with patch.dict("os.environ", {"OR_KEY": "sk-or-test"}, clear=False):
+        routes = ProviderRegistry(store=ProfileStore(path=profiles_path)).build_routes()
+    assert len(routes) == 1
+    assert routes[0].preferred_provider_id == "anthropic"
+    assert routes[0].provider_budget_id == "openrouter"
+
+
+def test_preferred_provider_id_empty_by_default(tmp_path):
+    """Routes built from profiles without preferred_provider_id get empty string."""
+    import json
+    profiles_path = tmp_path / "profiles.json"
+    profiles_path.write_text(json.dumps({
+        "profiles": {
+            "or-free": {
+                "provider": "openrouter",
+                "model": "openrouter/auto",
+                "api_key_env": "OR_KEY",
+                "role": "primary",
+                "cost_tier": "free",
+                "deployment_status": "active",
+                "enabled_by_default": True,
+                "allowed_response_policies": ["local_only"],
+            },
+        }
+    }), encoding="utf-8")
+    with patch.dict("os.environ", {"OR_KEY": "sk-test"}, clear=False):
+        routes = ProviderRegistry(store=ProfileStore(path=profiles_path)).build_routes()
+    assert routes[0].preferred_provider_id == ""
+
+
+def test_live_profiles_claude_openrouter_has_anthropic_preference():
+    """The real profiles.json sets preferred_provider_id=anthropic on claude-via-OpenRouter."""
+    from core.model_profile import get_default_store
+    store = get_default_store()
+    for name in ("openrouter-claude-sonnet-4-6", "openrouter-claude-opus-4-7"):
+        profile = store.get(name)
+        if profile is not None:
+            assert profile.preferred_provider_id == "anthropic", (
+                f"{name}: expected preferred_provider_id='anthropic', got {profile.preferred_provider_id!r}"
+            )

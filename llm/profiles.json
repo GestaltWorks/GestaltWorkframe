@@ -1,26 +1,412 @@
 {
   "profiles": {
+    "openrouter-free-router": {
+      "provider": "openrouter",
+      "model": "openrouter/auto",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "primary",
+      "cost_tier": "free",
+      "deployment_status": "active",
+      "runtime_group": "openrouter",
+      "enabled_by_default": true,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 0.9
+      },
+      "recommended_for": [
+        "guided_intake",
+        "routine_chat",
+        "basic_help",
+        "classification"
+      ],
+      "avoid_for": [
+        "tool_calling",
+        "agentic_workflows",
+        "complex_implementation",
+        "code_review"
+      ],
+      "routing_priority": 30,
+      "capabilities": [
+        "chat",
+        "rag_answering"
+      ],
+      "tool_calling_quality": "none",
+      "context_window_tokens": 200000,
+      "description": "Owl Alpha (openrouter/owl-alpha:free) \u2014 OpenRouter's own free flagship, 1M context, native tool calling, top free-tier by weekly usage. Catch-all for routine turns."
+    },
+    "openrouter-nemotron-super": {
+      "provider": "openrouter",
+      "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "primary",
+      "cost_tier": "free",
+      "deployment_status": "active",
+      "runtime_group": "openrouter",
+      "enabled_by_default": true,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.6,
+        "max_tokens": 4096,
+        "top_p": 0.9
+      },
+      "recommended_for": [
+        "routine_chat",
+        "rag_answering",
+        "socratic_tutor",
+        "summarization",
+        "guided_intake",
+        "implementation_help",
+        "workflow_examples"
+      ],
+      "avoid_for": [
+        "critical_security_review",
+        "high_value_service_inquiry"
+      ],
+      "routing_priority": 55,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering"
+      ],
+      "tool_calling_quality": "ok",
+      "context_window_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "description": "NVIDIA Llama 3.1 Nemotron Ultra 253B v1 (nvidia/llama-3.1-nemotron-ultra-253b-v1:free) \u2014 strong RAG + tool calling, 131K context, free tier."
+    },
+    "openrouter-gpt-oss-20b": {
+      "provider": "openrouter",
+      "model": "openai/gpt-oss-20b:free",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "primary",
+      "cost_tier": "free",
+      "deployment_status": "active",
+      "runtime_group": "openrouter",
+      "enabled_by_default": true,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.5,
+        "max_tokens": 4096,
+        "top_p": 0.9
+      },
+      "recommended_for": [
+        "routine_chat",
+        "guided_intake",
+        "implementation_help",
+        "workflow_debugging",
+        "classification",
+        "tool_calling"
+      ],
+      "avoid_for": [
+        "deep_code_review",
+        "large_refactor",
+        "high_stakes_reasoning"
+      ],
+      "routing_priority": 60,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering"
+      ],
+      "tool_calling_quality": "strong",
+      "context_window_tokens": 131072,
+      "max_output_tokens": 16000,
+      "description": "OpenAI gpt-oss-20b (free via OpenRouter) \u2014 21B MoE, fast, agentic, tool calling, Apache 2.0."
+    },
+    "openrouter-gpt-oss-120b": {
+      "provider": "openrouter",
+      "model": "openai/gpt-oss-120b:free",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "secondary",
+      "cost_tier": "free",
+      "deployment_status": "active",
+      "runtime_group": "openrouter",
+      "enabled_by_default": true,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.5,
+        "max_tokens": 8192,
+        "top_p": 0.9
+      },
+      "recommended_for": [
+        "complex_implementation",
+        "workflow_debugging",
+        "complex_debugging",
+        "agentic_workflows",
+        "tool_calling",
+        "implementation_help",
+        "code_review"
+      ],
+      "avoid_for": [
+        "routine_low_cost_fallback"
+      ],
+      "routing_priority": 75,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering",
+        "agentic_workflows"
+      ],
+      "tool_calling_quality": "strong",
+      "context_window_tokens": 131072,
+      "max_output_tokens": 16000,
+      "description": "OpenAI gpt-oss-120b (free via OpenRouter) \u2014 117B MoE, high-reasoning, native tool use, configurable chain-of-thought, free tier."
+    },
+    "openrouter-laguna-m1": {
+      "provider": "openrouter",
+      "model": "poolside/laguna-m.1:free",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "secondary",
+      "cost_tier": "free",
+      "deployment_status": "active",
+      "runtime_group": "openrouter",
+      "enabled_by_default": true,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.3,
+        "max_tokens": 8192,
+        "top_p": 0.9
+      },
+      "recommended_for": [
+        "local_coding",
+        "workflow_examples",
+        "jinja_help",
+        "workflow_debugging",
+        "complex_implementation",
+        "implementation_help",
+        "code_review"
+      ],
+      "avoid_for": [
+        "high_value_service_inquiry",
+        "deep_reasoning"
+      ],
+      "routing_priority": 78,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering"
+      ],
+      "tool_calling_quality": "strong",
+      "context_window_tokens": 262144,
+      "max_output_tokens": 8192,
+      "description": "Poolside Laguna M.1 (poolside/laguna-m.1:free) \u2014 flagship coding agent, tool calling, 262K context, fp8 quantized, free tier."
+    },
+    "openrouter-deepseek-v4-flash": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "secondary",
+      "cost_tier": "low_cost",
+      "input_price_usd_per_million": 0.1,
+      "output_price_usd_per_million": 0.2,
+      "deployment_status": "active",
+      "runtime_group": "openrouter",
+      "enabled_by_default": true,
+      "allowed_response_policies": [
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.5,
+        "max_tokens": 8192,
+        "top_p": 0.9
+      },
+      "recommended_for": [
+        "complex_debugging",
+        "complex_implementation",
+        "agentic_workflows",
+        "code_review",
+        "long_context_reasoning",
+        "high_value_service_inquiry"
+      ],
+      "avoid_for": [
+        "routine_low_cost_fallback"
+      ],
+      "routing_priority": 82,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering",
+        "agentic_workflows"
+      ],
+      "tool_calling_quality": "strong",
+      "context_window_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "evidence": [
+        {
+          "source": "OpenRouter \u2014 DeepSeek V4 Flash",
+          "url": "https://openrouter.ai/deepseek/deepseek-v4-flash",
+          "note": "$0.10/$0.20 per million tokens, 1M context, strong tool calling, top usage rank on OpenRouter."
+        }
+      ],
+      "description": "DeepSeek V4 Flash (via OpenRouter) \u2014 284B MoE, 13B active, 1M context, fast + cheap, strong tool calling."
+    },
+    "openrouter-claude-sonnet-4-6": {
+      "provider": "openrouter",
+      "model": "anthropic/claude-sonnet-4-6",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "escalation",
+      "cost_tier": "premium",
+      "input_price_usd_per_million": 3.0,
+      "output_price_usd_per_million": 15.0,
+      "deployment_status": "active",
+      "runtime_group": "openrouter",
+      "enabled_by_default": true,
+      "allowed_response_policies": [
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 8192,
+        "top_p": 1.0
+      },
+      "recommended_for": [
+        "coding",
+        "code_review",
+        "agentic_workflows",
+        "complex_debugging",
+        "complex_implementation",
+        "long_context_reasoning",
+        "frontend_design",
+        "high_value_service_inquiry",
+        "large_refactor"
+      ],
+      "avoid_for": [
+        "routine_low_cost_fallback"
+      ],
+      "routing_priority": 92,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering",
+        "agentic_workflows"
+      ],
+      "tool_calling_quality": "strong",
+      "context_window_tokens": 1000000,
+      "max_output_tokens": 64000,
+      "evidence": [
+        {
+          "source": "OpenRouter \u2014 Claude Sonnet 4.6",
+          "url": "https://openrouter.ai/anthropic/claude-sonnet-4-6",
+          "note": "Top tool-calling rank on OpenRouter. $3/$15 per million tokens via OpenRouter routing."
+        }
+      ],
+      "description": "Claude Sonnet 4.6 (via OpenRouter) \u2014 premium escalation for hard coding, code review, and high-value reasoning.",
+      "preferred_provider_id": "anthropic"
+    },
+    "openrouter-claude-opus-4-7": {
+      "provider": "openrouter",
+      "model": "anthropic/claude-opus-4-7",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "role": "escalation",
+      "cost_tier": "premium",
+      "input_price_usd_per_million": 5.0,
+      "output_price_usd_per_million": 25.0,
+      "deployment_status": "candidate",
+      "runtime_group": "openrouter",
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_then_claude_if_high_value"
+      ],
+      "params": {
+        "temperature": 0.5,
+        "max_tokens": 8192,
+        "top_p": 1.0
+      },
+      "recommended_for": [
+        "deep_reasoning",
+        "critical_code_review",
+        "large_refactor",
+        "multi_agent_planning",
+        "architecture_review",
+        "failure_analysis",
+        "high_stakes_reasoning",
+        "complex_implementation"
+      ],
+      "avoid_for": [
+        "routine_low_cost_fallback",
+        "routine_chat"
+      ],
+      "routing_priority": 98,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering",
+        "agentic_workflows"
+      ],
+      "tool_calling_quality": "strong",
+      "context_window_tokens": 1000000,
+      "max_output_tokens": 32000,
+      "evidence": [
+        {
+          "source": "OpenRouter \u2014 Claude Opus 4.7",
+          "url": "https://openrouter.ai/anthropic/claude-opus-4-7",
+          "note": "$5/$25 per million tokens via OpenRouter. Reserved for highest-value escalation turns."
+        }
+      ],
+      "description": "Claude Opus 4.7 (via OpenRouter) \u2014 maximum reasoning, reserved for architecture review and highest-stakes turns. Candidate \u2014 enable explicitly.",
+      "preferred_provider_id": "anthropic"
+    },
     "llama-3.1-8b-q4": {
       "provider": "llama_cpp",
       "model": "llama-3.1-8b-instruct-q4_k_m",
       "base_url": "http://localhost:8080/v1",
       "role": "primary",
       "cost_tier": "local",
-      "deployment_status": "active",
-      "runtime_group": "personal_gpu",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_only", "local_then_low_cost", "local_then_claude_if_high_value"],
+      "deployment_status": "disabled",
+      "runtime_group": "local_gpu",
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
       "params": {
         "temperature": 0.7,
         "max_tokens": 2048,
         "top_p": 0.9
       },
-      "recommended_for": ["local_default", "routine_chat", "guided_intake", "basic_help", "implementation_help", "socratic_tutor"],
-      "avoid_for": ["deep_code_review", "large_refactor", "high_stakes_reasoning"],
+      "recommended_for": [
+        "local_default",
+        "routine_chat",
+        "guided_intake",
+        "basic_help",
+        "implementation_help",
+        "socratic_tutor"
+      ],
+      "avoid_for": [
+        "deep_code_review",
+        "large_refactor",
+        "high_stakes_reasoning"
+      ],
       "routing_priority": 40,
-      "capabilities": ["chat", "rag_answering"],
+      "capabilities": [
+        "chat",
+        "rag_answering"
+      ],
       "tool_calling_quality": "none",
-      "description": "Llama 3.1 8B Instruct Q4_K_M — baseline for 6900XT (16 GB VRAM)"
+      "description": "Llama 3.1 8B Instruct Q4_K_M \u2014 bolt-on local GPU path (disabled by default). Enable if the operator brings their own GPU host."
     },
     "llama-3.2-3b-q4": {
       "provider": "llama_cpp",
@@ -28,21 +414,36 @@
       "base_url": "http://localhost:8081/v1",
       "role": "primary",
       "cost_tier": "local",
-      "deployment_status": "candidate",
-      "runtime_group": "personal_gpu",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_only", "local_then_low_cost"],
+      "deployment_status": "disabled",
+      "runtime_group": "local_gpu",
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost"
+      ],
       "params": {
         "temperature": 0.7,
         "max_tokens": 2048,
         "top_p": 0.9
       },
-      "recommended_for": ["fast_local_chat", "guided_intake", "classification", "socratic_tutor"],
-      "avoid_for": ["code_review", "complex_debugging", "high_stakes_reasoning"],
+      "recommended_for": [
+        "fast_local_chat",
+        "guided_intake",
+        "classification",
+        "socratic_tutor"
+      ],
+      "avoid_for": [
+        "code_review",
+        "complex_debugging",
+        "high_stakes_reasoning"
+      ],
       "routing_priority": 30,
-      "capabilities": ["chat", "rag_answering"],
+      "capabilities": [
+        "chat",
+        "rag_answering"
+      ],
       "tool_calling_quality": "none",
-      "description": "Llama 3.2 3B Instruct Q4_K_M — lighter option, faster inference"
+      "description": "Llama 3.2 3B Instruct Q4_K_M \u2014 bolt-on local GPU path (disabled by default)."
     },
     "qwen-2.5-coder-7b-q4": {
       "provider": "llama_cpp",
@@ -50,21 +451,36 @@
       "base_url": "http://localhost:8082/v1",
       "role": "primary",
       "cost_tier": "local",
-      "deployment_status": "candidate",
-      "runtime_group": "personal_gpu",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_only", "local_then_low_cost"],
+      "deployment_status": "disabled",
+      "runtime_group": "local_gpu",
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_only",
+        "local_then_low_cost"
+      ],
       "params": {
         "temperature": 0.3,
         "max_tokens": 4096,
         "top_p": 0.9
       },
-      "recommended_for": ["local_coding", "workflow_examples", "jinja_help", "workflow_debugging", "implementation_help"],
-      "avoid_for": ["high_value_service_inquiry", "deep_code_review"],
+      "recommended_for": [
+        "local_coding",
+        "workflow_examples",
+        "jinja_help",
+        "workflow_debugging",
+        "implementation_help"
+      ],
+      "avoid_for": [
+        "high_value_service_inquiry",
+        "deep_code_review"
+      ],
       "routing_priority": 55,
-      "capabilities": ["chat", "rag_answering"],
+      "capabilities": [
+        "chat",
+        "rag_answering"
+      ],
       "tool_calling_quality": "weak",
-      "description": "Qwen 2.5 Coder 7B Instruct Q4_K_M via llama.cpp/Vulkan — code-heavy automator sessions"
+      "description": "Qwen 2.5 Coder 7B Q4_K_M \u2014 bolt-on local GPU path (disabled by default)."
     },
     "claude-haiku-4-5": {
       "provider": "claude",
@@ -72,23 +488,44 @@
       "base_url": "",
       "role": "secondary",
       "cost_tier": "low_cost",
-      "deployment_status": "active",
+      "input_price_usd_per_million": 0.8,
+      "output_price_usd_per_million": 4.0,
+      "deployment_status": "disabled",
       "runtime_group": "cloud",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_then_low_cost", "local_then_claude_if_high_value"],
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
       "params": {
         "temperature": 0.7,
         "max_tokens": 4096,
         "top_p": 1.0
       },
-      "recommended_for": ["low_cost_fallback", "summarization", "routine_support", "classification", "workflow_examples", "implementation_help", "socratic_tutor"],
-      "avoid_for": ["deep_code_review", "large_refactor", "critical_security_review"],
+      "recommended_for": [
+        "low_cost_fallback",
+        "summarization",
+        "routine_support",
+        "classification",
+        "workflow_examples",
+        "implementation_help",
+        "socratic_tutor"
+      ],
+      "avoid_for": [
+        "deep_code_review",
+        "large_refactor",
+        "critical_security_review"
+      ],
       "routing_priority": 60,
-      "capabilities": ["chat", "tools", "rag_answering"],
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering"
+      ],
       "tool_calling_quality": "strong",
       "context_window_tokens": 200000,
       "max_output_tokens": 64000,
-      "description": "Claude Haiku 4.5 — low-cost cloud fallback"
+      "description": "Claude Haiku 4.5 (direct Anthropic API) \u2014 disabled bolt-on. Enable with ANTHROPIC_API_KEY if you want direct SDK routing instead of OpenRouter."
     },
     "gemini-cloud": {
       "provider": "openai_compatible",
@@ -99,21 +536,40 @@
       "api_key_env": "GEMINI_CLOUD_API_KEY",
       "role": "secondary",
       "cost_tier": "low_cost",
-      "deployment_status": "active",
+      "input_price_usd_per_million": 0.15,
+      "output_price_usd_per_million": 0.6,
+      "deployment_status": "disabled",
       "runtime_group": "cloud",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_then_low_cost", "local_then_claude_if_high_value"],
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_then_low_cost",
+        "local_then_claude_if_high_value"
+      ],
       "params": {
         "temperature": 0.7,
         "max_tokens": 4096,
         "top_p": 1.0
       },
-      "recommended_for": ["low_cost_fallback", "routine_support", "classification", "implementation_help", "socratic_tutor"],
-      "avoid_for": ["critical_security_review", "large_refactor", "high_stakes_reasoning"],
+      "recommended_for": [
+        "low_cost_fallback",
+        "routine_support",
+        "classification",
+        "implementation_help",
+        "socratic_tutor"
+      ],
+      "avoid_for": [
+        "critical_security_review",
+        "large_refactor",
+        "high_stakes_reasoning"
+      ],
       "routing_priority": 58,
-      "capabilities": ["chat", "tools", "rag_answering"],
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering"
+      ],
       "tool_calling_quality": "ok",
-      "description": "Gemini cloud route through Google AI Studio's OpenAI-compatible API. Configure server-side GEMINI_CLOUD_BASE_URL, GEMINI_CLOUD_API_KEY, and optionally GEMINI_CLOUD_MODEL."
+      "description": "Gemini 2.5 Flash (direct Google AI Studio) \u2014 disabled bolt-on. Configure GEMINI_CLOUD_* vars and enable if preferred over OpenRouter for Google models."
     },
     "claude-sonnet-4-5": {
       "provider": "claude",
@@ -121,23 +577,41 @@
       "base_url": "",
       "role": "escalation",
       "cost_tier": "premium",
-      "deployment_status": "candidate",
+      "input_price_usd_per_million": 3.0,
+      "output_price_usd_per_million": 15.0,
+      "deployment_status": "disabled",
       "runtime_group": "cloud",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_then_claude_if_high_value"],
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_then_claude_if_high_value"
+      ],
       "params": {
         "temperature": 0.7,
         "max_tokens": 8192,
         "top_p": 1.0
       },
-      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "complex_implementation", "high_value_service_inquiry"],
-      "avoid_for": ["routine_low_cost_fallback"],
+      "recommended_for": [
+        "coding",
+        "code_review",
+        "agentic_workflows",
+        "complex_debugging",
+        "complex_implementation",
+        "high_value_service_inquiry"
+      ],
+      "avoid_for": [
+        "routine_low_cost_fallback"
+      ],
       "routing_priority": 80,
-      "capabilities": ["chat", "tools", "rag_answering", "agentic_workflows"],
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering",
+        "agentic_workflows"
+      ],
       "tool_calling_quality": "strong",
       "context_window_tokens": 200000,
       "max_output_tokens": 64000,
-      "description": "Claude Sonnet 4.5 — high-value cloud escalation"
+      "description": "Claude Sonnet 4.5 (direct Anthropic API) \u2014 disabled bolt-on. Prefer openrouter-claude-sonnet-4-6 unless you need direct SDK routing."
     },
     "claude-sonnet-4-6": {
       "provider": "claude",
@@ -145,40 +619,43 @@
       "base_url": "",
       "role": "escalation",
       "cost_tier": "premium",
-      "deployment_status": "active",
+      "input_price_usd_per_million": 3.0,
+      "output_price_usd_per_million": 15.0,
+      "deployment_status": "disabled",
       "runtime_group": "cloud",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_then_claude_if_high_value"],
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_then_claude_if_high_value"
+      ],
       "params": {
         "temperature": 0.7,
         "max_tokens": 8192,
         "top_p": 1.0
       },
-      "recommended_for": ["coding", "code_review", "agentic_workflows", "complex_debugging", "complex_implementation", "long_context_reasoning", "frontend_design", "high_value_service_inquiry"],
-      "avoid_for": ["routine_low_cost_fallback"],
+      "recommended_for": [
+        "coding",
+        "code_review",
+        "agentic_workflows",
+        "complex_debugging",
+        "complex_implementation",
+        "long_context_reasoning",
+        "frontend_design",
+        "high_value_service_inquiry"
+      ],
+      "avoid_for": [
+        "routine_low_cost_fallback"
+      ],
       "routing_priority": 95,
-      "capabilities": ["chat", "tools", "rag_answering", "agentic_workflows"],
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering",
+        "agentic_workflows"
+      ],
       "tool_calling_quality": "strong",
       "context_window_tokens": 1000000,
       "max_output_tokens": 64000,
-      "evidence": [
-        {
-          "source": "Anthropic Models Overview",
-          "url": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
-          "note": "Lists claude-sonnet-4-6 as the best combination of speed and intelligence with 1M context and 64k max output."
-        },
-        {
-          "source": "Anthropic Sonnet 4.6 announcement",
-          "url": "https://www.anthropic.com/research/claude-sonnet-4-6",
-          "note": "Positions Sonnet 4.6 as a coding, long-context reasoning, agent planning, knowledge-work, and design upgrade."
-        },
-        {
-          "source": "Claude Sonnet 4.6 system card",
-          "url": "https://www.anthropic.com/claude-sonnet-4-6-system-card",
-          "note": "Reports strong SWE-bench Verified performance and multilingual coding evaluation results."
-        }
-      ],
-      "description": "Claude Sonnet 4.6 — default premium Claude escalation for coding, code review, and high-value reasoning"
+      "description": "Claude Sonnet 4.6 (direct Anthropic API) \u2014 disabled bolt-on. Prefer openrouter-claude-sonnet-4-6 unless you need direct SDK routing."
     },
     "claude-opus-4-7": {
       "provider": "claude",
@@ -186,30 +663,44 @@
       "base_url": "",
       "role": "escalation",
       "cost_tier": "premium",
-      "deployment_status": "candidate",
+      "input_price_usd_per_million": 5.0,
+      "output_price_usd_per_million": 25.0,
+      "deployment_status": "disabled",
       "runtime_group": "cloud",
-      "enabled_by_default": true,
-      "allowed_response_policies": ["local_then_claude_if_high_value"],
+      "enabled_by_default": false,
+      "allowed_response_policies": [
+        "local_then_claude_if_high_value"
+      ],
       "params": {
         "temperature": 0.5,
         "max_tokens": 8192,
         "top_p": 1.0
       },
-      "recommended_for": ["deep_reasoning", "critical_code_review", "large_refactor", "multi_agent_planning", "architecture_review", "failure_analysis", "high_stakes_reasoning", "complex_implementation"],
-      "avoid_for": ["routine_low_cost_fallback", "simple_coding", "guided_intake"],
-      "routing_priority": 90,
-      "capabilities": ["chat", "tools", "rag_answering", "agentic_workflows"],
+      "recommended_for": [
+        "deep_reasoning",
+        "critical_code_review",
+        "large_refactor",
+        "multi_agent_planning",
+        "architecture_review",
+        "failure_analysis",
+        "high_stakes_reasoning",
+        "complex_implementation"
+      ],
+      "avoid_for": [
+        "routine_low_cost_fallback",
+        "routine_chat"
+      ],
+      "routing_priority": 98,
+      "capabilities": [
+        "chat",
+        "tools",
+        "rag_answering",
+        "agentic_workflows"
+      ],
       "tool_calling_quality": "strong",
       "context_window_tokens": 1000000,
-      "max_output_tokens": 128000,
-      "evidence": [
-        {
-          "source": "Anthropic Models Overview",
-          "url": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
-          "note": "Lists claude-opus-4-7 as the most capable generally available Claude model for complex reasoning and agentic coding."
-        }
-      ],
-      "description": "Claude Opus 4.7 — highest-cost escalation for complex reasoning, architecture, critical review, and high-stakes agentic work"
+      "max_output_tokens": 32000,
+      "description": "Claude Opus 4.7 (direct Anthropic API) \u2014 disabled bolt-on. Prefer openrouter-claude-opus-4-7 unless you need direct SDK routing."
     }
   }
 }

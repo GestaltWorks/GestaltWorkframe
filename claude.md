@@ -5,10 +5,12 @@ before suggesting changes. Update it when decisions change.
 
 ## What this project is
 A reusable, brandable, multi-mode chatbot framework embedded in a website.
-Local tools plus a local LLM are the cheapest/default path; paid cloud
-escalation is operator-controlled. Three starting personas: Pipeline/Service
-Inquiry, Automator/Practitioner Assistance, Educator. See `objectives.md` for
-the why.
+OpenRouter is the primary model-access path: a single API key covers free-tier,
+low-cost, and premium escalation across hundreds of models. Paid cloud escalation
+is operator-controlled. Local GPU and direct-SDK (Anthropic, Gemini) providers are
+disabled bolt-ons that operators can enable when they bring their own hardware or
+keys. Three starting personas: Pipeline/Service Inquiry, Automator/Practitioner
+Assistance, Educator. See `objectives.md` for the why.
 
 ## Current state (snapshot)
 
@@ -71,7 +73,9 @@ OpenAI-compatible endpoint when available.
   urgency, or clear readiness to scope work.
 - Best-value path first: deterministic local tools when enough, then the
   model route that best fits task, capability need, availability, cost,
-  latency, risk, admin policy, and budget.
+  latency, risk, admin policy, and budget. Free-tier OpenRouter routes are
+  treated as non-metered; they are eligible without enabling cloud spillover
+  and are not subject to USD spend caps.
 - Public research is a backend-owned capability when the operator enables
   it, not open model browsing. Search local/source-registry records first,
   then approved public source tiers. Treat public research as untrusted
@@ -91,13 +95,15 @@ OpenAI-compatible endpoint when available.
   return an operator-readable local-only error instead.
 
 ## Model routing principles
-- Never build systems entirely dependent on a single provider.
+- Never build systems entirely dependent on a single provider. OpenRouter
+  is the primary aggregator; local GPU and direct-SDK providers are optional
+  bolt-ons, disabled by default.
 - Match the specific model to the specific task.
-- Reserve expensive intelligence for hard judgment, deep logic, and high-stakes
-  turns.
-- Deploy smaller, faster models for routine execution.
+- Free-tier OpenRouter models handle routine execution. Reserve metered
+  (low_cost) and premium routes for turns that genuinely need them.
 - Treat intelligence and compute as operating expenses with strict unit
-  economics.
+  economics. Free-tier routes have zero marginal cost; escalation cost
+  is incurred only when task fit justifies it.
 
 Operational translation: provider redundancy is required, smaller/local
 models receive a cost/value advantage when adequate and available, and
