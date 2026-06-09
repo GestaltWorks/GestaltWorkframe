@@ -308,6 +308,7 @@ class ProviderRegistry:
             input_price_usd_per_million=profile.input_price_usd_per_million,
             output_price_usd_per_million=profile.output_price_usd_per_million,
             provider_budget_id=budget_id,
+            preferred_provider_id=profile.preferred_provider_id,
         )
 
     def _attach_model_profile(self, provider: LLMProvider, profile: ModelProfile) -> None:
