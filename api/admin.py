@@ -258,14 +258,24 @@ async def _apply_admin_policy(services: AppServices, patch: AdminPolicyPatch) ->
         from core.cloud_budget import MultiProviderBudgetGate
         if isinstance(services.cloud_budget, MultiProviderBudgetGate):
             for pid, caps in patch.provider_budgets.items():
-                if pid in services.cloud_budget._provider_configs:
-                    cfg = services.cloud_budget._provider_configs[pid]
-                    if "max_daily_usd" in caps:
-                        cfg.max_daily_usd = max(float(caps["max_daily_usd"]), 0.0)
-                    if "max_monthly_usd" in caps:
-                        cfg.max_monthly_usd = max(float(caps["max_monthly_usd"]), 0.0)
-                    if "enabled" in caps:
-                        cfg.enabled = bool(caps["enabled"])
+                cfg = services.cloud_budget.provider_config(pid)
+                if cfg is None:
+                    continue
+                new_daily = float(caps.get("max_daily_usd", cfg.max_daily_usd))
+                new_monthly = float(caps.get("max_monthly_usd", cfg.max_monthly_usd))
+                # Reject accidental zeroing of both caps on an enabled provider.
+                if new_daily == 0.0 and new_monthly == 0.0 and cfg.enabled:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"provider_budgets: at least one cap (daily or monthly) must be > 0 "
+                            f"for '{pid}'. To disable the provider set enabled=false explicitly."
+                        ),
+                    )
+                cfg.max_daily_usd = max(new_daily, 0.0)
+                cfg.max_monthly_usd = max(new_monthly, 0.0)
+                if "enabled" in caps:
+                    cfg.enabled = bool(caps["enabled"])
     if budget.enabled:
         await services.cloud_budget.init()
 

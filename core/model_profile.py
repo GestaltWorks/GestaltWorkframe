@@ -50,11 +50,6 @@ class ModelProfile(BaseModel):
     # Example: "anthropic" on a claude profile signals "prefer direct Anthropic
     # over OpenRouter if that budget still has headroom".
     preferred_provider_id: str = ""
-    # When non-empty, the router applies a preference bonus to routes that
-    # serve this model via the named direct provider versus via OpenRouter.
-    # Example: "anthropic" on a claude profile signals "prefer direct Anthropic
-    # over OpenRouter if that budget still has headroom".
-    preferred_provider_id: str = ""
     context_window_tokens: int | None = None
     max_output_tokens: int | None = None
     evidence: list[ModelEvidence] = Field(default_factory=list)

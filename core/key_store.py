@@ -29,6 +29,7 @@ the key store can be used before the full SQLModel engine is initialised.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import secrets
@@ -90,27 +91,33 @@ class ApiKeyStore:
     def __init__(self, sqlite_path: str = "database.db") -> None:
         self._path = sqlite_path
         self._ready = False
+        self._init_lock: asyncio.Lock | None = None
 
     async def init(self) -> None:
         if self._ready:
             return
-        try:
-            async with aiosqlite.connect(self._path) as db:
-                await db.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS provider_key_store (
-                        provider_id TEXT PRIMARY KEY,
-                        salt        TEXT NOT NULL,
-                        nonce       TEXT NOT NULL,
-                        ciphertext  TEXT NOT NULL,
-                        updated_at  TEXT NOT NULL
+        if self._init_lock is None:
+            self._init_lock = asyncio.Lock()
+        async with self._init_lock:
+            if self._ready:  # re-check after acquiring the lock
+                return
+            try:
+                async with aiosqlite.connect(self._path) as db:
+                    await db.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS provider_key_store (
+                            provider_id TEXT PRIMARY KEY,
+                            salt        TEXT NOT NULL,
+                            nonce       TEXT NOT NULL,
+                            ciphertext  TEXT NOT NULL,
+                            updated_at  TEXT NOT NULL
+                        )
+                        """
                     )
-                    """
-                )
-                await db.commit()
-            self._ready = True
-        except Exception as exc:
-            logger.warning("ApiKeyStore init failed: %s", exc)
+                    await db.commit()
+                self._ready = True
+            except Exception as exc:
+                logger.warning("ApiKeyStore init failed: %s", exc)
 
     async def has_key(self, provider_id: str) -> bool:
         """Return True if a row exists for provider_id (no decryption)."""

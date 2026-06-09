@@ -417,3 +417,151 @@ async def test_multi_gate_from_env_builds_enabled_provider_buckets(tmp_path):
     # google/openai not enabled -> no dedicated gates
     assert "google" not in mg._gates
     assert "openai" not in mg._gates
+@pytest.mark.asyncio
+async def test_multi_gate_provider_config_and_gate_accessors(tmp_path):
+    """Public accessor methods expose provider config and gate without touching privates."""
+    mg = _multi_gate(tmp_path)
+    cfg = mg.provider_config("openrouter")
+    assert cfg is not None
+    assert cfg.max_daily_usd == 5.0
+
+    gate = mg.provider_gate("openrouter")
+    assert gate is not None
+
+    # Unknown provider returns None
+    assert mg.provider_config("unknown_provider") is None
+    assert mg.provider_gate("unknown_provider") is None
+
+
+@pytest.mark.asyncio
+async def test_refresh_headroom_cache_populates_cache(tmp_path):
+    """refresh_headroom_cache() fills _headroom_cache; headroom() reads it."""
+    mg = _multi_gate(tmp_path)
+    # Before refresh, cache is empty; headroom() defaults to 1.0
+    assert mg.headroom("openrouter") == 1.0
+
+    await mg.refresh_headroom_cache()
+    # No spend recorded yet -> headroom should be 1.0 (full)
+    assert mg.headroom("openrouter") == pytest.approx(1.0)
+    # Provider with no gate returns 1.0 from cache
+    assert mg.headroom("google") == 1.0
+
+
+@pytest.mark.asyncio
+async def test_provider_budgets_patch_mutates_caps(tmp_path):
+    """provider_budgets in AdminPolicyPatch mutates in-memory ProviderBudgetConfig caps."""
+    from unittest.mock import AsyncMock, MagicMock
+    from api.admin import AdminPolicyPatch, _apply_admin_policy
+    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
+    from core.router import LLMRouter, ProviderRoute
+    from core.orchestrator import Orchestrator
+    from core.policy import CloudSpendPolicy
+    from core.chat_orchestrator import ChatTurnOrchestrator
+    from api.services import AppServices, ChatMetrics
+
+    db_path = str(tmp_path / "test.db")
+    mock_provider = MagicMock()
+    mock_provider.is_healthy = AsyncMock(return_value=False)
+    mock_provider.health_status = None
+    mock_provider.close = AsyncMock()
+    mock_provider.model = "stub"
+    mock_provider.profile_name = "stub"
+    mock_provider.provider_role = "primary"
+    mock_provider.cost_tier = "local"
+    mock_provider.allowed_response_policies = ["local_only"]
+    mock_provider.capabilities = []
+    mock_provider.tool_calling_quality = "none"
+
+    global_gate = CloudBudgetGate(CloudBudgetConfig(enabled=False, sqlite_path=db_path))
+    provider_configs = {
+        "openrouter": ProviderBudgetConfig(
+            provider_id="openrouter", enabled=True, max_daily_usd=5.0, max_monthly_usd=50.0
+        ),
+    }
+    multi_gate = MultiProviderBudgetGate(global_gate, provider_configs)
+    route = ProviderRoute(
+        name="stub", provider=mock_provider, provider_type="LocalProvider",
+        model="stub", role="primary", cost_tier="local",
+        allowed_response_policies=["local_only"],
+    )
+    router = LLMRouter(primary=mock_provider, routes=[route], cloud_budget=multi_gate)
+    orchestrator = Orchestrator(CloudSpendPolicy())
+    chat_orc = MagicMock(spec=ChatTurnOrchestrator)
+    services = AppServices(
+        local_provider=mock_provider,
+        secondary_provider=None,
+        cloud_budget=multi_gate,
+        llm_router=router,
+        orchestrator=orchestrator,
+        chat_turns=chat_orc,
+        balance_checker=None,
+        key_store=None,
+        chat_metrics=ChatMetrics(),
+    )
+
+    assert multi_gate.provider_config("openrouter").max_daily_usd == 5.0
+    patch_obj = AdminPolicyPatch(provider_budgets={"openrouter": {"max_daily_usd": 12.5, "max_monthly_usd": 100.0}})
+    await _apply_admin_policy(services, patch_obj)
+
+    assert multi_gate.provider_config("openrouter").max_daily_usd == pytest.approx(12.5)
+    assert multi_gate.provider_config("openrouter").max_monthly_usd == pytest.approx(100.0)
+
+
+@pytest.mark.asyncio
+async def test_provider_budgets_patch_rejects_both_zero_caps(tmp_path):
+    """_apply_admin_policy raises HTTPException when both caps are zeroed on an enabled provider."""
+    from unittest.mock import AsyncMock, MagicMock
+    from fastapi import HTTPException
+    from api.admin import AdminPolicyPatch, _apply_admin_policy
+    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
+    from core.router import LLMRouter, ProviderRoute
+    from core.orchestrator import Orchestrator
+    from core.policy import CloudSpendPolicy
+    from core.chat_orchestrator import ChatTurnOrchestrator
+    from api.services import AppServices, ChatMetrics
+
+    db_path = str(tmp_path / "test.db")
+    mock_provider = MagicMock()
+    mock_provider.is_healthy = AsyncMock(return_value=False)
+    mock_provider.health_status = None
+    mock_provider.close = AsyncMock()
+    mock_provider.model = "stub"
+    mock_provider.profile_name = "stub"
+    mock_provider.provider_role = "primary"
+    mock_provider.cost_tier = "local"
+    mock_provider.allowed_response_policies = ["local_only"]
+    mock_provider.capabilities = []
+    mock_provider.tool_calling_quality = "none"
+
+    global_gate = CloudBudgetGate(CloudBudgetConfig(enabled=False, sqlite_path=db_path))
+    provider_configs = {
+        "openrouter": ProviderBudgetConfig(
+            provider_id="openrouter", enabled=True, max_daily_usd=5.0, max_monthly_usd=50.0
+        ),
+    }
+    multi_gate = MultiProviderBudgetGate(global_gate, provider_configs)
+    route = ProviderRoute(
+        name="stub", provider=mock_provider, provider_type="LocalProvider",
+        model="stub", role="primary", cost_tier="local",
+        allowed_response_policies=["local_only"],
+    )
+    router = LLMRouter(primary=mock_provider, routes=[route], cloud_budget=multi_gate)
+    orchestrator = Orchestrator(CloudSpendPolicy())
+    chat_orc = MagicMock(spec=ChatTurnOrchestrator)
+    services = AppServices(
+        local_provider=mock_provider,
+        secondary_provider=None,
+        cloud_budget=multi_gate,
+        llm_router=router,
+        orchestrator=orchestrator,
+        chat_turns=chat_orc,
+        balance_checker=None,
+        key_store=None,
+        chat_metrics=ChatMetrics(),
+    )
+
+    patch_obj = AdminPolicyPatch(provider_budgets={"openrouter": {"max_daily_usd": 0.0, "max_monthly_usd": 0.0}})
+    with pytest.raises(HTTPException) as exc_info:
+        await _apply_admin_policy(services, patch_obj)
+    assert exc_info.value.status_code == 400
+    assert "cap" in str(exc_info.value.detail).lower() or "daily" in str(exc_info.value.detail).lower()

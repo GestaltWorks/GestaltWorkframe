@@ -544,8 +544,7 @@ class LLMRouter:
         # Bonus of 50 * headroom (0-50 pts) tiebreaks same-tier same-task
         # routes and backs off automatically as the direct cap is consumed.
         if route.preferred_provider_id and route.preferred_provider_id == route.provider_budget_id:
-            headroom = self.provider_budget_headroom(route.preferred_provider_id)
-            score += int(50 * headroom)
+            score += int(50 * self.provider_budget_headroom(route.preferred_provider_id))
         return score
 
     def _task_matches(self, task: str | None, tags: list[str]) -> bool:
@@ -718,65 +717,16 @@ class LLMRouter:
                 await self._trip_breaker()
 
     def provider_budget_headroom(self, provider_id: str) -> float:
-        """Return a 0.0-1.0 fraction of remaining USD headroom for provider_id.
+        """Return cached 0.0-1.0 daily cap headroom for provider_id.
 
-        Used as a tiebreaker score bonus. 1.0 = full headroom (or no cap
-        configured). 0.0 = cap exhausted or provider not tracked.
+        Reads from MultiProviderBudgetGate._headroom_cache populated by
+        refresh_headroom_cache() at the start of each _ordered_routes() call.
+        Returns 1.0 when no multi gate is configured or provider has no cap.
         """
         from core.cloud_budget import MultiProviderBudgetGate
         if not isinstance(self.cloud_budget, MultiProviderBudgetGate):
             return 1.0
-        cfg = self.cloud_budget._provider_configs.get(provider_id)
-        gate = self.cloud_budget._gates.get(provider_id)
-        if cfg is None or not cfg.enabled or gate is None:
-            return 1.0
-        cap = cfg.max_daily_usd
-        if cap <= 0:
-            return 1.0
-        # Read last known spend from the gate snapshot without awaiting --
-        # use the synchronous counter cache if available, else default to 1.0.
-        # Full async headroom check happens in _cloud_spend_allowed; this is
-        # only a scoring hint so stale-by-TTL is acceptable.
-        try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Inside async context: can't block. Return neutral score.
-                return 1.0
-            snap = loop.run_until_complete(gate.snapshot())
-            used = float(snap.get("used", {}).get("day_usd", 0.0))
-            return max(0.0, min(1.0, (cap - used) / cap))
-        except Exception:
-            return 1.0
-
-    def provider_budget_headroom(self, provider_id: str) -> float:
-        """Return a 0.0-1.0 fraction of remaining USD headroom for provider_id.
-
-        Used as a tiebreaker score bonus. 1.0 = full headroom (or no cap
-        configured). 0.0 = cap exhausted or provider not tracked.
-        """
-        from core.cloud_budget import MultiProviderBudgetGate
-        if not isinstance(self.cloud_budget, MultiProviderBudgetGate):
-            return 1.0
-        cfg = self.cloud_budget._provider_configs.get(provider_id)
-        gate = self.cloud_budget._gates.get(provider_id)
-        if cfg is None or not cfg.enabled or gate is None:
-            return 1.0
-        cap = cfg.max_daily_usd
-        if cap <= 0:
-            return 1.0
-        # Scoring hint: read cached spend without blocking the event loop.
-        # _cloud_spend_allowed does the authoritative async check.
-        try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                return 1.0
-            snap = loop.run_until_complete(gate.snapshot())
-            used = float(snap.get("used", {}).get("day_usd", 0.0))
-            return max(0.0, min(1.0, (cap - used) / cap))
-        except Exception:
-            return 1.0
+        return self.cloud_budget.headroom(provider_id)
 
     async def _cloud_spend_allowed(
         self,
@@ -933,6 +883,12 @@ class LLMRouter:
 
         sent_primary_chunk = False
         require_tools = bool(tools)
+        from core.cloud_budget import MultiProviderBudgetGate
+        if isinstance(self.cloud_budget, MultiProviderBudgetGate):
+            try:
+                await self.cloud_budget.refresh_headroom_cache()
+            except Exception:
+                pass
         ordered_routes, diagnostics = self._ordered_routes(
             force_secondary,
             cloud_allowed,
@@ -1001,6 +957,12 @@ class LLMRouter:
         await self._reset_breaker_if_healthy()
 
         require_tools = bool(tools)
+        from core.cloud_budget import MultiProviderBudgetGate
+        if isinstance(self.cloud_budget, MultiProviderBudgetGate):
+            try:
+                await self.cloud_budget.refresh_headroom_cache()
+            except Exception:
+                pass
         ordered_routes, diagnostics = self._ordered_routes(
             force_secondary,
             cloud_allowed,

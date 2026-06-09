@@ -500,6 +500,8 @@ class MultiProviderBudgetGate:
         # but use provider-scoped USD caps. Call-count caps are set to very
         # large numbers so they don't double-count (global gate owns those).
         self._gates: dict[str, CloudBudgetGate] = {}
+        self._headroom_cache: dict[str, float] = {}
+        self._headroom_cache: dict[str, float] = {}
         for pid, cfg in self._provider_configs.items():
             if cfg.enabled and (cfg.max_daily_usd > 0 or cfg.max_monthly_usd > 0):
                 per_config = CloudBudgetConfig(
@@ -528,6 +530,70 @@ class MultiProviderBudgetGate:
     def gate_for(self, provider_id: str) -> CloudBudgetGate:
         """Return the provider-scoped gate, falling back to the global gate."""
         return self._gates.get(provider_id, self.global_gate)
+
+    def provider_config(self, provider_id: str) -> "ProviderBudgetConfig | None":
+        """Return ProviderBudgetConfig for provider_id, or None."""
+        return self._provider_configs.get(provider_id)
+
+    def provider_gate(self, provider_id: str) -> "CloudBudgetGate | None":
+        """Return the per-provider CloudBudgetGate, or None if not configured."""
+        return self._gates.get(provider_id)
+
+    async def refresh_headroom_cache(self) -> None:
+        """Populate _headroom_cache with 0.0-1.0 daily cap fractions.
+
+        Called once per _ordered_routes() pass so _route_score() can read
+        headroom synchronously without blocking the event loop.
+        """
+        cache: dict[str, float] = {}
+        for pid, cfg in self._provider_configs.items():
+            gate = self._gates.get(pid)
+            if gate is None or not cfg.enabled or cfg.max_daily_usd <= 0:
+                cache[pid] = 1.0
+                continue
+            try:
+                snap = await gate.snapshot()
+                used = float(snap.get("used", {}).get("day_usd", 0.0))
+                cache[pid] = max(0.0, min(1.0, (cfg.max_daily_usd - used) / cfg.max_daily_usd))
+            except Exception:
+                cache[pid] = 1.0
+        self._headroom_cache = cache
+
+    def headroom(self, provider_id: str) -> float:
+        """Return cached 0.0-1.0 headroom fraction. Call refresh_headroom_cache() first."""
+        return self._headroom_cache.get(provider_id, 1.0)
+
+    def provider_config(self, provider_id: str) -> "ProviderBudgetConfig | None":
+        """Return ProviderBudgetConfig for provider_id, or None."""
+        return self._provider_configs.get(provider_id)
+
+    def provider_gate(self, provider_id: str) -> "CloudBudgetGate | None":
+        """Return the per-provider CloudBudgetGate, or None if not configured."""
+        return self._gates.get(provider_id)
+
+    async def refresh_headroom_cache(self) -> None:
+        """Populate _headroom_cache with 0.0-1.0 daily cap fractions.
+
+        Called once per _ordered_routes() pass so _route_score() can read
+        headroom synchronously without blocking the event loop.
+        """
+        cache: dict[str, float] = {}
+        for pid, cfg in self._provider_configs.items():
+            gate = self._gates.get(pid)
+            if gate is None or not cfg.enabled or cfg.max_daily_usd <= 0:
+                cache[pid] = 1.0
+                continue
+            try:
+                snap = await gate.snapshot()
+                used = float(snap.get("used", {}).get("day_usd", 0.0))
+                cache[pid] = max(0.0, min(1.0, (cfg.max_daily_usd - used) / cfg.max_daily_usd))
+            except Exception:
+                cache[pid] = 1.0
+        self._headroom_cache = cache
+
+    def headroom(self, provider_id: str) -> float:
+        """Return cached 0.0-1.0 headroom fraction. Call refresh_headroom_cache() first."""
+        return self._headroom_cache.get(provider_id, 1.0)
 
     @property
     def config(self) -> CloudBudgetConfig:

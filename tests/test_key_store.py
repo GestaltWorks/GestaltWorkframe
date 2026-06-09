@@ -305,3 +305,20 @@ def test_test_provider_key_no_key_configured(tmp_path, monkeypatch):
     body = resp.json()
     assert body["valid"] is False
     assert body["error"] == "no_key_configured"
+def test_set_provider_key_never_returns_key_value(tmp_path, monkeypatch):
+    """Verify the set-key endpoint never echoes the key back in any response field."""
+    client = _make_client(tmp_path, monkeypatch)
+    secret = "sk-or-secret-key-should-not-appear-in-response-abc123"
+    with client:
+        resp = client.post(
+            "/admin/api/provider-keys/openrouter",
+            json={"key": secret},
+            headers={"x-admin-token": "test-admin"},
+        )
+    assert resp.status_code == 200
+    body_str = resp.text
+    assert secret not in body_str, "Raw key value must never appear in any response field"
+    body = resp.json()
+    assert "key" not in body, "Response must not have a top-level 'key' field"
+    # Nested test result must also not contain the key
+    assert secret not in str(body.get("test", {}))
