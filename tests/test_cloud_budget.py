@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 import core.cloud_budget as cloud_budget
-from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate
+from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
 from core.policy import CloudSpendPolicy
 
 
@@ -255,3 +255,165 @@ def test_cloud_spend_policy_enables_claude_only_with_spillover_and_caps(tmp_path
     assert config.max_monthly_usd == 50
     assert config.max_output_tokens_per_call == 2048
     assert config.sqlite_path.endswith("budget.db")
+
+
+# ---------------------------------------------------------------------------
+# ProviderBudgetConfig tests
+# ---------------------------------------------------------------------------
+
+def test_provider_budget_config_from_env_defaults_disabled():
+    with patch.dict("os.environ", {}, clear=False):
+        cfg = ProviderBudgetConfig.from_env("openrouter")
+    assert cfg.provider_id == "openrouter"
+    assert cfg.enabled is False
+    assert cfg.max_daily_usd == 0.0
+    assert cfg.max_monthly_usd == 0.0
+
+
+def test_provider_budget_config_from_env_reads_vars():
+    with patch.dict(
+        "os.environ",
+        {
+            "OPENROUTER_BUDGET_ENABLED": "true",
+            "OPENROUTER_BUDGET_MAX_DAILY_USD": "5.0",
+            "OPENROUTER_BUDGET_MAX_MONTHLY_USD": "50.0",
+        },
+        clear=False,
+    ):
+        cfg = ProviderBudgetConfig.from_env("openrouter")
+    assert cfg.enabled is True
+    assert cfg.max_daily_usd == 5.0
+    assert cfg.max_monthly_usd == 50.0
+
+
+# ---------------------------------------------------------------------------
+# MultiProviderBudgetGate tests
+# ---------------------------------------------------------------------------
+
+def _multi_gate(tmp_path, **provider_overrides):
+    global_config = _enabled_config(tmp_path, max_daily_usd=100.0, max_monthly_usd=1000.0)
+    global_gate = CloudBudgetGate(global_config)
+    provider_configs = {
+        "openrouter": ProviderBudgetConfig(
+            provider_id="openrouter",
+            enabled=True,
+            max_daily_usd=provider_overrides.get("or_daily", 5.0),
+            max_monthly_usd=provider_overrides.get("or_monthly", 50.0),
+        ),
+        "anthropic": ProviderBudgetConfig(
+            provider_id="anthropic",
+            enabled=True,
+            max_daily_usd=provider_overrides.get("ant_daily", 2.0),
+            max_monthly_usd=provider_overrides.get("ant_monthly", 20.0),
+        ),
+    }
+    return MultiProviderBudgetGate(global_gate=global_gate, provider_configs=provider_configs)
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_gate_for_returns_provider_gate(tmp_path):
+    mg = _multi_gate(tmp_path)
+    or_gate = mg.gate_for("openrouter")
+    ant_gate = mg.gate_for("anthropic")
+    default_gate = mg.gate_for("google")
+
+    assert or_gate is not mg.global_gate
+    assert ant_gate is not mg.global_gate
+    assert default_gate is mg.global_gate
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_reserve_allows_within_provider_cap(tmp_path):
+    mg = _multi_gate(tmp_path, or_daily=5.0)
+    decision = await mg.reserve("session-1", provider_id="openrouter")
+    assert decision.allowed is True
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_provider_usd_cap_blocks_independently(tmp_path):
+    mg = _multi_gate(tmp_path, or_daily=0.001)
+    await mg.record_usage(
+        "session-1", "OpenAICompatibleProvider", "openrouter/auto",
+        5000, 5000, 0.001, 0.001, provider_id="openrouter",
+    )
+    decision = await mg.reserve(
+        "session-2",
+        estimated_input_tokens=1000,
+        requested_output_tokens=500,
+        provider_id="openrouter",
+    )
+    assert decision.allowed is False
+    assert "usd_cap_exhausted" in decision.reason
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_anthropic_cap_does_not_block_openrouter(tmp_path):
+    mg = _multi_gate(tmp_path, ant_daily=0.001, or_daily=5.0)
+    await mg.record_usage(
+        "session-1", "ClaudeProvider", "claude-sonnet",
+        5000, 5000, 0.001, 0.001, provider_id="anthropic",
+    )
+    ant_decision = await mg.reserve(
+        "session-2", estimated_input_tokens=100, requested_output_tokens=100, provider_id="anthropic"
+    )
+    or_decision = await mg.reserve(
+        "session-3", estimated_input_tokens=100, requested_output_tokens=100, provider_id="openrouter"
+    )
+    assert ant_decision.allowed is False
+    assert or_decision.allowed is True
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_global_cap_blocks_all_providers(tmp_path):
+    mg = _multi_gate(tmp_path)
+    # _enabled_config sets max_calls_per_day=3; exhaust it.
+    await mg.reserve("s1", provider_id="openrouter")
+    await mg.reserve("s2", provider_id="anthropic")
+    await mg.reserve("s3", provider_id="google")
+    decision = await mg.reserve("s4", provider_id="openrouter")
+    assert decision.allowed is False
+    assert decision.reason == "daily_cap_exhausted"
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_snapshot_includes_provider_section(tmp_path):
+    mg = _multi_gate(tmp_path)
+    snap = await mg.snapshot()
+    assert "providers" in snap
+    assert "openrouter" in snap["providers"]
+    assert "anthropic" in snap["providers"]
+    or_entry = snap["providers"]["openrouter"]
+    assert or_entry["enabled"] is True
+    assert or_entry["max_daily_usd"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_config_property_exposes_global_config(tmp_path):
+    mg = _multi_gate(tmp_path)
+    assert mg.config is mg.global_gate.config
+
+
+@pytest.mark.asyncio
+async def test_multi_gate_from_env_builds_enabled_provider_buckets(tmp_path):
+    with patch.dict(
+        "os.environ",
+        {
+            "OPENROUTER_BUDGET_ENABLED": "true",
+            "OPENROUTER_BUDGET_MAX_DAILY_USD": "5",
+            "OPENROUTER_BUDGET_MAX_MONTHLY_USD": "50",
+            "ANTHROPIC_BUDGET_ENABLED": "true",
+            "ANTHROPIC_BUDGET_MAX_DAILY_USD": "2",
+            "ANTHROPIC_BUDGET_MAX_MONTHLY_USD": "20",
+        },
+        clear=False,
+    ):
+        global_gate = CloudBudgetGate(_enabled_config(tmp_path))
+        mg = MultiProviderBudgetGate.from_env(global_gate)
+
+    assert "openrouter" in mg._gates
+    assert "anthropic" in mg._gates
+    assert mg._gates["openrouter"].config.max_daily_usd == 5.0
+    assert mg._gates["anthropic"].config.max_daily_usd == 2.0
+    # google/openai not enabled -> no dedicated gates
+    assert "google" not in mg._gates
+    assert "openai" not in mg._gates

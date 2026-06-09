@@ -59,6 +59,7 @@ class AdminPolicyPatch(BaseModel):
     max_input_tokens_per_call: int | None = None
     max_output_tokens_per_call: int | None = None
     routes: dict[str, bool] | None = None
+    provider_budgets: dict[str, dict[str, float]] | None = None
 
     @field_validator("routing_strategy")
     @classmethod
@@ -198,6 +199,18 @@ async def _apply_admin_policy(services: AppServices, patch: AdminPolicyPatch) ->
             )
         for name, enabled in patch.routes.items():
             services.llm_router.set_route_enabled(name, enabled)
+    if patch.provider_budgets:
+        from core.cloud_budget import MultiProviderBudgetGate
+        if isinstance(services.cloud_budget, MultiProviderBudgetGate):
+            for pid, caps in patch.provider_budgets.items():
+                if pid in services.cloud_budget._provider_configs:
+                    cfg = services.cloud_budget._provider_configs[pid]
+                    if "max_daily_usd" in caps:
+                        cfg.max_daily_usd = max(float(caps["max_daily_usd"]), 0.0)
+                    if "max_monthly_usd" in caps:
+                        cfg.max_monthly_usd = max(float(caps["max_monthly_usd"]), 0.0)
+                    if "enabled" in caps:
+                        cfg.enabled = bool(caps["enabled"])
     if budget.enabled:
         await services.cloud_budget.init()
 

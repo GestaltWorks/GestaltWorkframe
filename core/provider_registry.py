@@ -20,6 +20,16 @@ def _env_text(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+def _provider_budget_id(profile: "ModelProfile") -> str:
+    if profile.provider == "openrouter":
+        return "openrouter"
+    if profile.provider == "claude":
+        return "anthropic"
+    if getattr(profile, "api_key_env", "") == "GEMINI_CLOUD_API_KEY":
+        return "google"
+    return "default"
+
+
 def _local_profile_base_url(profile_url: str) -> str:
     override = _env_text("LOCAL_LLM_BASE_URL")
     if not override:
@@ -276,6 +286,7 @@ class ProviderRegistry:
         blocked_reason: str = "",
         model: str | None = None,
     ) -> ProviderRoute:
+        budget_id = _provider_budget_id(profile)
         return ProviderRoute(
             name=profile.name,
             provider=provider,
@@ -296,6 +307,7 @@ class ProviderRegistry:
             tool_calling_quality=profile.tool_calling_quality,
             input_price_usd_per_million=profile.input_price_usd_per_million,
             output_price_usd_per_million=profile.output_price_usd_per_million,
+            provider_budget_id=budget_id,
         )
 
     def _attach_model_profile(self, provider: LLMProvider, profile: ModelProfile) -> None:

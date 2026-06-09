@@ -30,7 +30,7 @@ from typing import Any
 from fastapi import Depends, Header, HTTPException, Request
 
 from core.chat_orchestrator import ChatTurnOrchestrator
-from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate
+from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
 from core.orchestrator import Orchestrator
 from core.policy import CloudSpendPolicy
 from core.provider_registry import ProviderRegistry
@@ -116,7 +116,7 @@ class ChatMetrics:
 class AppServices:
     local_provider: Any
     secondary_provider: Any | None
-    cloud_budget: CloudBudgetGate
+    cloud_budget: CloudBudgetGate | MultiProviderBudgetGate
     llm_router: LLMRouter
     orchestrator: Orchestrator
     chat_turns: ChatTurnOrchestrator
@@ -136,7 +136,8 @@ async def build_app_services() -> AppServices:
     if local_provider is None:
         local_provider = registry.build_primary()
     secondary_provider = next((route.provider for route in routes if route.provider and route.is_cloud), None)
-    cloud_budget = CloudBudgetGate(CloudBudgetConfig.from_env())
+    _global_gate = CloudBudgetGate(CloudBudgetConfig.from_env())
+    cloud_budget = MultiProviderBudgetGate.from_env(_global_gate)
     runtime_manager = RuntimeManager(RuntimeControlPolicy.from_env())
     llm_router = LLMRouter(
         primary=local_provider,

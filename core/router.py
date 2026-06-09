@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.cloud_budget import CloudBudgetGate
+from core.cloud_budget import CloudBudgetGate, MultiProviderBudgetGate
 from core.providers import LLMProvider
 from core.runtime import GenerationConcurrencyPolicy, RuntimeManager
 
@@ -60,6 +60,7 @@ class ProviderRoute:
     tool_calling_quality: str = "none"
     input_price_usd_per_million: float = 0.0
     output_price_usd_per_million: float = 0.0
+    provider_budget_id: str = "default"
 
     @property
     def is_cloud(self) -> bool:
@@ -722,7 +723,12 @@ class LLMRouter:
             logger.warning("Cloud escalation blocked: no budget gate configured.")
             return False
 
-        decision = await self.cloud_budget.reserve(
+        gate = (
+            self.cloud_budget.gate_for(route.provider_budget_id)
+            if isinstance(self.cloud_budget, MultiProviderBudgetGate)
+            else self.cloud_budget
+        )
+        decision = await gate.reserve(
             session_id,
             estimated_input_tokens=self._estimate_input_tokens(messages),
             requested_output_tokens=self._cloud_max_tokens(route),
@@ -747,15 +753,27 @@ class LLMRouter:
         )
         if self.cloud_budget:
             input_tokens, output_tokens = self._extract_usage(response)
-            await self.cloud_budget.record_usage(
-                session_id,
-                provider=route.provider.__class__.__name__,
-                model=route.model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                input_price_usd_per_million=route.input_price_usd_per_million or None,
-                output_price_usd_per_million=route.output_price_usd_per_million or None,
-            )
+            if isinstance(self.cloud_budget, MultiProviderBudgetGate):
+                await self.cloud_budget.record_usage(
+                    session_id,
+                    provider=route.provider.__class__.__name__,
+                    model=route.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    input_price_usd_per_million=route.input_price_usd_per_million or None,
+                    output_price_usd_per_million=route.output_price_usd_per_million or None,
+                    provider_id=route.provider_budget_id,
+                )
+            else:
+                await self.cloud_budget.record_usage(
+                    session_id,
+                    provider=route.provider.__class__.__name__,
+                    model=route.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    input_price_usd_per_million=route.input_price_usd_per_million or None,
+                    output_price_usd_per_million=route.output_price_usd_per_million or None,
+                )
         return response
 
     def _cloud_max_tokens(self, route: ProviderRoute) -> int:

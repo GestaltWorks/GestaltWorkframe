@@ -63,6 +63,30 @@ class CloudBudgetConfig(BaseModel):
 class CloudBudgetDecision(BaseModel):
     allowed: bool
     reason: str
+# Provider-scoped USD budget caps. These are additive to CloudBudgetConfig:
+# the global gate still enforces call-count and token caps; per-provider
+# configs enforce the USD spend limits for each API provider separately.
+_PROVIDER_BUDGET_ENV_PREFIXES: dict[str, str] = {
+    "openrouter": "OPENROUTER_BUDGET",
+    "anthropic": "ANTHROPIC_BUDGET",
+    "google": "GOOGLE_BUDGET",
+    "openai": "OPENAI_BUDGET",
+}
+
+
+class ProviderBudgetConfig(BaseModel):
+    provider_id: str
+    enabled: bool = False
+    max_daily_usd: float = 0.0
+    max_monthly_usd: float = 0.0
+
+    @classmethod
+    def from_env(cls, provider_id: str) -> "ProviderBudgetConfig":
+        prefix = _PROVIDER_BUDGET_ENV_PREFIXES.get(provider_id, provider_id.upper() + "_BUDGET")
+        enabled = _env_bool(f"{prefix}_ENABLED")
+        daily = _env_float(f"{prefix}_MAX_DAILY_USD")
+        monthly = _env_float(f"{prefix}_MAX_MONTHLY_USD")
+        return cls(provider_id=provider_id, enabled=enabled, max_daily_usd=daily, max_monthly_usd=monthly)
 
 
 class CloudBudgetGate:
@@ -448,3 +472,145 @@ class CloudBudgetGate:
 
     def _current_month(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m")
+
+class MultiProviderBudgetGate:
+    """Per-provider USD budget tracking layered on top of the global CloudBudgetGate.
+
+    Each provider (openrouter, anthropic, google, openai) gets its own
+    `ProviderBudgetConfig` with independent daily/monthly USD caps. The global
+    `CloudBudgetGate` still governs call-count and token caps; per-provider
+    gates add a second USD check keyed to whichever provider would fund the call.
+
+    Usage in the router:
+      gate = multi_gate.gate_for("openrouter")
+      decision = await gate.reserve(session_id, ...)
+    """
+
+    PROVIDER_IDS = ("openrouter", "anthropic", "google", "openai")
+
+    def __init__(
+        self,
+        global_gate: CloudBudgetGate,
+        provider_configs: dict[str, ProviderBudgetConfig] | None = None,
+    ) -> None:
+        self.global_gate = global_gate
+        self._provider_configs: dict[str, ProviderBudgetConfig] = provider_configs or {}
+        # Build a CloudBudgetGate for each provider that has a config.
+        # The per-provider gates share the same sqlite_path as the global gate
+        # but use provider-scoped USD caps. Call-count caps are set to very
+        # large numbers so they don't double-count (global gate owns those).
+        self._gates: dict[str, CloudBudgetGate] = {}
+        for pid, cfg in self._provider_configs.items():
+            if cfg.enabled and (cfg.max_daily_usd > 0 or cfg.max_monthly_usd > 0):
+                per_config = CloudBudgetConfig(
+                    enabled=True,
+                    # Call-count caps disabled at per-provider level; global gate owns them.
+                    max_calls_per_turn=999_999,
+                    max_calls_per_session=999_999,
+                    max_calls_per_day=999_999,
+                    max_calls_per_month=999_999,
+                    max_daily_usd=cfg.max_daily_usd,
+                    max_monthly_usd=cfg.max_monthly_usd,
+                    # Token caps: inherit from global config.
+                    max_input_tokens_per_call=global_gate.config.max_input_tokens_per_call,
+                    max_output_tokens_per_call=global_gate.config.max_output_tokens_per_call,
+                    input_price_usd_per_million=global_gate.config.input_price_usd_per_million,
+                    output_price_usd_per_million=global_gate.config.output_price_usd_per_million,
+                    sqlite_path=global_gate.config.sqlite_path,
+                )
+                self._gates[pid] = CloudBudgetGate(per_config)
+
+    @classmethod
+    def from_env(cls, global_gate: CloudBudgetGate) -> "MultiProviderBudgetGate":
+        configs = {pid: ProviderBudgetConfig.from_env(pid) for pid in cls.PROVIDER_IDS}
+        return cls(global_gate=global_gate, provider_configs=configs)
+
+    def gate_for(self, provider_id: str) -> CloudBudgetGate:
+        """Return the provider-scoped gate, falling back to the global gate."""
+        return self._gates.get(provider_id, self.global_gate)
+
+    @property
+    def config(self) -> CloudBudgetConfig:
+        """Expose global gate config for backward-compatible reads (e.g. admin policy)."""
+        return self.global_gate.config
+
+    async def init(self) -> None:
+        await self.global_gate.init()
+        for gate in self._gates.values():
+            gate._store_ready = self.global_gate._store_ready
+            gate._store_error = self.global_gate._store_error
+
+    async def reserve(
+        self,
+        session_id: str | None,
+        estimated_input_tokens: int = 0,
+        requested_output_tokens: int = 0,
+        provider_id: str = "default",
+    ) -> CloudBudgetDecision:
+        decision = await self.global_gate.reserve(session_id, estimated_input_tokens, requested_output_tokens)
+        if not decision.allowed:
+            return decision
+        if provider_id in self._gates:
+            return await self._gates[provider_id].reserve(session_id, estimated_input_tokens, requested_output_tokens)
+        return decision
+
+    async def availability(
+        self,
+        estimated_input_tokens: int = 0,
+        requested_output_tokens: int = 0,
+        provider_id: str = "default",
+    ) -> CloudBudgetDecision:
+        decision = await self.global_gate.availability(estimated_input_tokens, requested_output_tokens)
+        if not decision.allowed:
+            return decision
+        if provider_id in self._gates:
+            return await self._gates[provider_id].availability(estimated_input_tokens, requested_output_tokens)
+        return decision
+
+    async def record_usage(
+        self,
+        session_id: str | None,
+        provider: str,
+        model: str,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
+        provider_id: str = "default",
+    ) -> CloudBudgetDecision:
+        decision = await self.global_gate.record_usage(
+            session_id, provider, model, input_tokens, output_tokens,
+            input_price_usd_per_million, output_price_usd_per_million,
+        )
+        if provider_id in self._gates and input_tokens is not None and output_tokens is not None:
+            await self._gates[provider_id].record_usage(
+                session_id, provider, model, input_tokens, output_tokens,
+                input_price_usd_per_million, output_price_usd_per_million,
+            )
+        return decision
+
+    async def snapshot(self) -> dict[str, object]:
+        base = await self.global_gate.snapshot()
+        providers: dict[str, object] = {}
+        for pid, cfg in self._provider_configs.items():
+            gate = self._gates.get(pid)
+            if gate:
+                gate_snap = await gate.snapshot()
+                providers[pid] = {
+                    "enabled": cfg.enabled,
+                    "max_daily_usd": cfg.max_daily_usd,
+                    "max_monthly_usd": cfg.max_monthly_usd,
+                    "used": gate_snap.get("used", {}),
+                }
+            else:
+                providers[pid] = {
+                    "enabled": cfg.enabled,
+                    "max_daily_usd": cfg.max_daily_usd,
+                    "max_monthly_usd": cfg.max_monthly_usd,
+                    "used": None,
+                }
+        base["providers"] = providers
+        return base
+
+    async def clear_accounting_block(self) -> CloudBudgetDecision:
+        return await self.global_gate.clear_accounting_block()
