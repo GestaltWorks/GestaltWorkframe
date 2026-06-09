@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel  # noqa: F401  - keep sqlmodel imported alongside select for parity
 
 from api.services import AppServices, enabled_cost_tiers, get_app_services, require_admin_token
+from core.key_store import ApiKeyStore, _PROVIDER_ENV_VARS as _KEY_STORE_PROVIDER_ENV_VARS
 from core.provider_balance import BalanceSnapshot, local_tracking_balance
 from core.db import ContactRecord, TerminalIntakeRecord, async_session_maker, get_session
 from core.handoff_packets import (
@@ -68,6 +69,26 @@ class AdminPolicyPatch(BaseModel):
         if value is not None and value not in ROUTING_STRATEGIES:
             raise ValueError(f"Unknown routing_strategy: {value}")
         return value
+
+
+class ProviderKeyPatch(BaseModel):
+    key: str = Field(..., min_length=1, max_length=500)
+
+
+class ProviderKeyTestResult(BaseModel):
+    valid: bool
+    error: str = ""
+
+
+async def _test_provider_key(provider_id: str, api_key: str) -> ProviderKeyTestResult:
+    """Make a minimal live test call to verify the key is accepted."""
+    if provider_id == "openrouter":
+        from core.provider_balance import OpenRouterBalanceChecker
+        checker = OpenRouterBalanceChecker(api_key)
+        snap = await checker.get()
+        return ProviderKeyTestResult(valid=snap.available, error=snap.error)
+    # For other providers: presence check only (no live call to avoid spend).
+    return ProviderKeyTestResult(valid=bool(api_key), error="" if api_key else "empty_key")
 
 
 async def _admin_health_payload(services: AppServices, force_refresh: bool = False) -> dict[str, Any]:
@@ -291,6 +312,87 @@ async def admin_retention_sweep(_: None = Depends(require_admin_token)) -> dict[
     policy = RetentionPolicy.from_env()
     summary = await retention_sweep(policy, async_session_maker, dry_run=False)
     return summary.to_dict()
+
+
+@router.post("/provider-keys/{provider_id}")
+async def set_provider_key(
+    provider_id: str,
+    body: ProviderKeyPatch,
+    request: Request,
+    _: None = Depends(require_admin_token),
+) -> dict[str, object]:
+    """Encrypt and store an API key for a provider. Returns masked status + test result."""
+    services = get_app_services(request)
+    if provider_id not in _KEY_STORE_PROVIDER_ENV_VARS:
+        raise HTTPException(status_code=400, detail={"code": "unknown_provider", "provider_id": provider_id, "known": sorted(_KEY_STORE_PROVIDER_ENV_VARS)})
+    if services.key_store is None:
+        raise HTTPException(status_code=503, detail="Key store not available")
+    admin_token = request.headers.get("x-admin-token", "").strip()
+    ok = await services.key_store.set_key(provider_id, body.key, admin_token)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Key store write failed")
+    # Invalidate the balance checker cache for OpenRouter if the key changed.
+    if provider_id == "openrouter" and services.balance_checker is not None:
+        services.balance_checker.invalidate()
+    test_result = await _test_provider_key(provider_id, body.key)
+    has = await services.key_store.has_key(provider_id)
+    return {"provider_id": provider_id, "stored": has, "test": test_result.model_dump()}
+
+
+@router.delete("/provider-keys/{provider_id}")
+async def delete_provider_key(
+    provider_id: str,
+    request: Request,
+    _: None = Depends(require_admin_token),
+) -> dict[str, object]:
+    """Remove the stored key for a provider. Env-var fallback resumes."""
+    services = get_app_services(request)
+    if services.key_store is None:
+        raise HTTPException(status_code=503, detail="Key store not available")
+    deleted = await services.key_store.delete_key(provider_id)
+    env_fallback = bool(services.key_store.env_fallback(provider_id))
+    if provider_id == "openrouter" and services.balance_checker is not None:
+        services.balance_checker.invalidate()
+    return {"provider_id": provider_id, "deleted": deleted, "env_fallback_available": env_fallback}
+
+
+@router.post("/provider-keys/{provider_id}/test")
+async def test_provider_key(
+    provider_id: str,
+    request: Request,
+    _: None = Depends(require_admin_token),
+) -> dict[str, object]:
+    """Test the currently active key for a provider (stored or env fallback)."""
+    services = get_app_services(request)
+    admin_token = request.headers.get("x-admin-token", "").strip()
+    key = ""
+    if services.key_store is not None:
+        key = await services.key_store.get_key(provider_id, admin_token) or ""
+    if not key:
+        key = services.key_store.env_fallback(provider_id) if services.key_store else ""
+    if not key:
+        return {"provider_id": provider_id, "valid": False, "error": "no_key_configured"}
+    result = await _test_provider_key(provider_id, key)
+    return {"provider_id": provider_id, **result.model_dump()}
+
+
+@router.get("/provider-keys")
+async def list_provider_keys(
+    request: Request,
+    _: None = Depends(require_admin_token),
+) -> dict[str, object]:
+    """List all providers with masked key presence status."""
+    services = get_app_services(request)
+    statuses: dict[str, object] = {}
+    for pid in sorted(_KEY_STORE_PROVIDER_ENV_VARS):
+        has_stored = await services.key_store.has_key(pid) if services.key_store else False
+        has_env = bool(services.key_store.env_fallback(pid)) if services.key_store else False
+        statuses[pid] = {
+            "has_stored_key": has_stored,
+            "has_env_key": has_env,
+            "active_source": "store" if has_stored else ("env" if has_env else "none"),
+        }
+    return {"providers": statuses}
 
 
 @router.post("/cloud-budget/clear-accounting-block")
