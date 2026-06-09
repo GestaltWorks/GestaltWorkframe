@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel  # noqa: F401  - keep sqlmodel imported alongside select for parity
 
 from api.services import AppServices, enabled_cost_tiers, get_app_services, require_admin_token
+from core.provider_balance import BalanceSnapshot, local_tracking_balance
 from core.db import ContactRecord, TerminalIntakeRecord, async_session_maker, get_session
 from core.handoff_packets import (
     build_contact_handoff_packet,
@@ -97,12 +98,45 @@ async def _admin_health_payload(services: AppServices, force_refresh: bool = Fal
             "max_output_tokens_per_call": budget.max_output_tokens_per_call,
             "route_overrides": services.llm_router.route_overrides(),
         },
-        "cloud_budget": await services.cloud_budget.snapshot(),
+        "cloud_budget": await _cloud_budget_with_balance(services),
         "circuit_breaker": services.llm_router.circuit_breaker_status(),
         "generation_concurrency": await services.llm_router.generation_concurrency_status(),
         "route_diagnostics": services.llm_router.route_diagnostics(),
         "metrics": {"chat": await services.chat_metrics.snapshot()},
     }
+
+
+async def _cloud_budget_with_balance(services: AppServices) -> dict[str, Any]:
+    snap = await services.cloud_budget.snapshot()
+    # Attach live / estimated balance data to each provider bucket.
+    providers = snap.get("providers")
+    if not providers:
+        return snap
+    from core.cloud_budget import MultiProviderBudgetGate
+    if not isinstance(services.cloud_budget, MultiProviderBudgetGate):
+        return snap
+    for pid, entry in providers.items():
+        if not isinstance(entry, dict):
+            continue
+        if pid == "openrouter" and services.balance_checker is not None:
+            balance = await services.balance_checker.get()
+            entry["balance"] = balance.to_dict()
+        else:
+            gate = services.cloud_budget._gates.get(pid)
+            if gate:
+                gate_snap = await gate.snapshot()
+                used = gate_snap.get("used", {})
+                cfg = services.cloud_budget._provider_configs.get(pid)
+                if cfg:
+                    balance = local_tracking_balance(
+                        pid,
+                        cfg.max_daily_usd,
+                        cfg.max_monthly_usd,
+                        float(used.get("day_usd", 0.0)),
+                        float(used.get("month_usd", 0.0)),
+                    )
+                    entry["balance"] = balance.to_dict()
+    return snap
 
 
 def _safe_json_dict(value: str) -> dict[str, Any]:
