@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import mcp_servers.kb_server as kb_server
+import gestaltworkframe.mcp_servers.kb_server as kb_server
 from gestaltworkframe.kb import retrieval_format, source_links
 from gestaltworkframe.kb.source_links import SourceLinkProfile
 

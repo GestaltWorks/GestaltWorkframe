@@ -148,7 +148,7 @@ from gestaltworkframe.core.router import ROUTING_STRATEGIES
 from api.chat import clean_intake_text  # noqa: F401
 from gestaltworkframe.kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
 from gestaltworkframe.kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
-from mcp_servers.kb_server import vectorstore_document_count
+from gestaltworkframe.mcp_servers.kb_server import vectorstore_document_count
 
 logger = logging.getLogger(__name__)
 

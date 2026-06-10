@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from mcp_servers.kb_server import kb_search
+from gestaltworkframe.mcp_servers.kb_server import kb_search
 from gestaltworkframe.core.discovery_retrieval import approved_discovery_context_result
 from gestaltworkframe.core.tool_policy import WORKFLOW_PATTERN_SEARCH
 
