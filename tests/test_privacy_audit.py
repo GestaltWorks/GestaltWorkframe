@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from gestalt_connector_protocol import Document, Privacy, SourceMetadata
 
 from api.privacy_audit import privacy_audit_payload
-from core.db import DiscoveryFind
+from gestaltworkframe.core.db import DiscoveryFind
 
 
 def _find(find_id: str, *, cloud_eligible: bool) -> DiscoveryFind:

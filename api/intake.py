@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.request_helpers import client_ip, make_body_size_limit
-from core.db import TerminalIntakeRecord, get_session, save_terminal_intake_submission
+from gestaltworkframe.core.db import TerminalIntakeRecord, get_session, save_terminal_intake_submission
 
 # Re-export for api/main.py which imports clean_text and client_ip from this module.
 __all__ = ["clean_text", "client_ip", "intake_body_size_limit", "router"]

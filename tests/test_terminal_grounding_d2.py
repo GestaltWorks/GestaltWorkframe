@@ -15,16 +15,16 @@ Verifies the three coordinated changes that aim to stop canned answers:
 
 from __future__ import annotations
 
-from core.answer_grading import AnswerGrade, AnswerGrader
-from core.orchestrator import BUILD_INTENT_TERMS, Orchestrator
-from core.personas import (
+from gestaltworkframe.core.answer_grading import AnswerGrade, AnswerGrader
+from gestaltworkframe.core.orchestrator import BUILD_INTENT_TERMS, Orchestrator
+from gestaltworkframe.core.personas import (
     AUTOMATOR_PERSONA,
     CITATION_DISCIPLINE,
     DEFAULT_BOT_IDENTITY,
     EDUCATOR_PERSONA,
     PIPELINE_PERSONA,
 )
-from core.policy import (
+from gestaltworkframe.core.policy import (
     ChatMode,
     CloudSpendPolicy,
     RoutingDecision,

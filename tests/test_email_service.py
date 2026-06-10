@@ -1,4 +1,4 @@
-from core.email_service import _build_html
+from gestaltworkframe.core.email_service import _build_html
 
 
 def test_contact_email_uses_current_services_url() -> None:

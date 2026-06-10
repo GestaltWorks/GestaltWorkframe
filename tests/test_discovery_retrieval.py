@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-from core.db import DiscoveryFind, DiscoverySource
-from core.discovery_document import discovery_find_to_document
-from core.discovery_retrieval import approved_discovery_context
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.discovery_document import discovery_find_to_document
+from gestaltworkframe.core.discovery_retrieval import approved_discovery_context
 
 
 @pytest.mark.asyncio
@@ -18,7 +18,7 @@ async def test_approved_discovery_context_returns_latest_matching_finds(tmp_path
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
     maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    monkeypatch.setattr("core.discovery_retrieval.async_session_maker", maker)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_retrieval.async_session_maker", maker)
     now = datetime.now(timezone.utc)
     async with maker() as session:
         source = DiscoverySource(id="source-1", name="platform_blog", watch_type="rss_feed", target="https://example.com/feed.xml")

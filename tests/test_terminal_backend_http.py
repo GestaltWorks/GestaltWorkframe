@@ -6,8 +6,8 @@ import pytest
 import api.chat as api_chat
 import api.intake as api_intake
 import api.main as api_main
-from core.chat_orchestrator import ChatTurnOrchestrator
-from core.orchestrator import Orchestrator
+from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
+from gestaltworkframe.core.orchestrator import Orchestrator
 
 
 class _Router:

@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from core.provider_balance import (
+from gestaltworkframe.core.provider_balance import (
     BalanceSnapshot,
     OpenRouterBalanceChecker,
     local_tracking_balance,
@@ -77,7 +77,7 @@ async def test_openrouter_checker_parses_balance_fields():
     checker = OpenRouterBalanceChecker(api_key="sk-test", cache_ttl=300)
     mock_resp = _mock_response({"limit": 10.0, "usage": 2.5, "is_free_tier": False})
 
-    with patch("core.provider_balance.httpx.AsyncClient") as mock_client_cls:
+    with patch("gestaltworkframe.core.provider_balance.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -101,7 +101,7 @@ async def test_openrouter_checker_free_tier_remaining_is_zero():
     checker = OpenRouterBalanceChecker(api_key="sk-test", cache_ttl=300)
     mock_resp = _mock_response({"limit": 0, "usage": 0.5, "is_free_tier": True})
 
-    with patch("core.provider_balance.httpx.AsyncClient") as mock_client_cls:
+    with patch("gestaltworkframe.core.provider_balance.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -131,7 +131,7 @@ async def test_openrouter_checker_missing_key_returns_unavailable():
 async def test_openrouter_checker_network_error_returns_unavailable():
     checker = OpenRouterBalanceChecker(api_key="sk-test", cache_ttl=300)
 
-    with patch("core.provider_balance.httpx.AsyncClient") as mock_client_cls:
+    with patch("gestaltworkframe.core.provider_balance.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(side_effect=Exception("connection refused"))
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -151,7 +151,7 @@ async def test_openrouter_checker_http_error_returns_unavailable():
     resp = MagicMock()
     resp.raise_for_status = MagicMock(side_effect=Exception("401 Unauthorized"))
 
-    with patch("core.provider_balance.httpx.AsyncClient") as mock_client_cls:
+    with patch("gestaltworkframe.core.provider_balance.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=resp)
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -178,7 +178,7 @@ async def test_openrouter_checker_caches_result_within_ttl():
         call_count += 1
         return mock_resp
 
-    with patch("core.provider_balance.httpx.AsyncClient") as mock_client_cls:
+    with patch("gestaltworkframe.core.provider_balance.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.get = _get
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -204,7 +204,7 @@ async def test_openrouter_checker_refetches_after_ttl_expires():
         call_count += 1
         return mock_resp
 
-    with patch("core.provider_balance.httpx.AsyncClient") as mock_client_cls:
+    with patch("gestaltworkframe.core.provider_balance.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.get = _get
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -229,7 +229,7 @@ async def test_openrouter_checker_invalidate_forces_refetch():
         call_count += 1
         return mock_resp
 
-    with patch("core.provider_balance.httpx.AsyncClient") as mock_client_cls:
+    with patch("gestaltworkframe.core.provider_balance.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.get = _get
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)

@@ -9,8 +9,8 @@ marker in between.
 
 from __future__ import annotations
 
-import core.chat_orchestrator as chat_mod
-from core.chat_orchestrator import ChatTurnOrchestrator
+import gestaltworkframe.core.chat_orchestrator as chat_mod
+from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
 
 
 def _orchestrator() -> ChatTurnOrchestrator:

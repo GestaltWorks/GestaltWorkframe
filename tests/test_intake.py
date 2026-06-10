@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
 from api import intake
-from core.db import TerminalIntakeRecord, save_terminal_intake_submission
+from gestaltworkframe.core.db import TerminalIntakeRecord, save_terminal_intake_submission
 from sqlalchemy.exc import IntegrityError
 
 

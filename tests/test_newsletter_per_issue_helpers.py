@@ -31,9 +31,9 @@ from sqlmodel import SQLModel, select
 
 import api.admin_discovery as api_admin_discovery
 import api.main as api_main
-from core import newsletter as newsletter_module
-from core.db import DiscoveryFind, DiscoverySource, NewsletterIssue
-from core.db.models import NewsletterDelivery
+from gestaltworkframe.core import newsletter as newsletter_module
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource, NewsletterIssue
+from gestaltworkframe.core.db.models import NewsletterDelivery
 
 
 def _make_engine(tmp_path):

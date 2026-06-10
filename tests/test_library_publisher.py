@@ -8,7 +8,7 @@ import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
 import kb.library_publisher as publisher
 from kb.library_publisher import _document_content, _github_app_jwt, _safe_target_path
 

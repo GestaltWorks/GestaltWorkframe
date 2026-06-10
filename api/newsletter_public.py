@@ -19,8 +19,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.request_helpers import client_ip
-from core.db import ContactRecord, get_session
-from core.subscribers import ROLE_TOPICS, subscribe_and_reply, unsubscribe_by_token
+from gestaltworkframe.core.db import ContactRecord, get_session
+from gestaltworkframe.core.subscribers import ROLE_TOPICS, subscribe_and_reply, unsubscribe_by_token
 
 router = APIRouter(prefix="/newsletter", tags=["newsletter"])
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ async def unsubscribe(
     enumeration).
     """
 
-    from core.deployment_config import get_deployment_config
+    from gestaltworkframe.core.deployment_config import get_deployment_config
 
     home_url = get_deployment_config().site.base_url.rstrip("/")
     token = (token or "").strip()

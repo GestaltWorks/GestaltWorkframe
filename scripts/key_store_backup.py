@@ -23,7 +23,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from core.key_store import ApiKeyStore
+from gestaltworkframe.core.key_store import ApiKeyStore
 
 
 def get_store_path() -> str:

@@ -14,12 +14,12 @@ import httpx
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-from core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
 
 def _library_cfg():
     """Lazy read of LibraryConfig; returns None if unavailable."""
     try:
-        from core.deployment_config import get_deployment_config
+        from gestaltworkframe.core.deployment_config import get_deployment_config
         return get_deployment_config().library
     except Exception:
         return None

@@ -25,9 +25,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
 from api import contact, newsletter_public
-from core import contact_autoreply
-from core import subscribers as subscribers_module
-from core.db import Subscriber, SubscriberAutoReplyRecord
+from gestaltworkframe.core import contact_autoreply
+from gestaltworkframe.core import subscribers as subscribers_module
+from gestaltworkframe.core.db import Subscriber, SubscriberAutoReplyRecord
 
 
 async def _test_app(tmp_path, monkeypatch):
@@ -308,7 +308,7 @@ async def test_newsletter_subscribe_endpoint_creates_subscriber_and_sends_reply(
     # ContactRecord exists with signup_source=newsletter; Subscriber row
     # exists with the engineer topics; the auto-reply mock was called
     # with the engineer template.
-    from core.db import ContactRecord, Subscriber
+    from gestaltworkframe.core.db import ContactRecord, Subscriber
     async with maker() as session:
         records = (await session.execute(select(ContactRecord))).scalars().all()
         subs = (await session.execute(select(Subscriber))).scalars().all()
@@ -376,15 +376,15 @@ async def test_newsletter_subscribe_rate_limited_by_ip(tmp_path, monkeypatch):
 
 def test_subscribe_and_reply_helper_is_shared_by_both_paths():
     """No duplicated subscribe+reply code path: /contact and
-    /newsletter/subscribe both call core.subscribers.subscribe_and_reply.
+    /newsletter/subscribe both call gestaltworkframe.core.subscribers.subscribe_and_reply.
     Guards against future drift where one entry point silently stops
     persisting Subscriber rows or sending auto-replies."""
     from pathlib import Path
     contact = Path("api/contact.py").read_text(encoding="utf-8")
     nl = Path("api/newsletter_public.py").read_text(encoding="utf-8")
-    helper = Path("core/subscribers.py").read_text(encoding="utf-8")
+    helper = Path("gestaltworkframe/core/subscribers.py").read_text(encoding="utf-8")
 
-    assert "from core.subscribers import subscribe_and_reply" in contact
+    assert "from gestaltworkframe.core.subscribers import subscribe_and_reply" in contact
     assert "subscribe_and_reply" in nl
     assert "async def subscribe_and_reply" in helper
     # The legacy private _subscribe_and_reply on api/contact.py must be gone

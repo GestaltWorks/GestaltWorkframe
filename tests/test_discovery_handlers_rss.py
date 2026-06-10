@@ -3,8 +3,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from core.discovery_handlers import DiscoverySourceLike
-from core.discovery_handlers.rss import poll
+from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike
+from gestaltworkframe.core.discovery_handlers.rss import poll
 
 
 _RSS_BODY = """<?xml version="1.0" encoding="UTF-8"?>

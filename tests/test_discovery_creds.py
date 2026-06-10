@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.discovery_handlers import DiscoverySourceLike
-from core.discovery_scheduler import _WATCH_TYPE_TO_PROVIDER
+from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike
+from gestaltworkframe.core.discovery_scheduler import _WATCH_TYPE_TO_PROVIDER
 
 
 def test_discovery_source_like_has_auth_token_field():
@@ -45,10 +45,10 @@ def test_watch_type_to_provider_map_no_entry_for_rss():
 async def test_poll_source_injects_auth_token_from_key_store(tmp_path):
     """_poll_source resolves auth_token from key_store when available."""
     from unittest.mock import AsyncMock, MagicMock
-    from core.discovery_handlers import DiscoverySourceLike, PollResult, register
-    from core.discovery_scheduler import _poll_source
+    from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike, PollResult, register
+    from gestaltworkframe.core.discovery_scheduler import _poll_source
     import asyncio
-    from core.key_store import ApiKeyStore
+    from gestaltworkframe.core.key_store import ApiKeyStore
 
     captured: list[DiscoverySourceLike] = []
 
@@ -59,7 +59,7 @@ async def test_poll_source_injects_auth_token_from_key_store(tmp_path):
     # Temporarily register a test watch_type
     register("_test_type_creds", _fake_handler)
 
-    from core.db import DiscoverySource
+    from gestaltworkframe.core.db import DiscoverySource
     source = MagicMock(spec=DiscoverySource)
     source.name = "test-source"
     source.watch_type = "_test_type_creds"
@@ -72,7 +72,7 @@ async def test_poll_source_injects_auth_token_from_key_store(tmp_path):
     await key_store.set_key("_test_type_creds_doesnt_exist", "gh-tok", "admin")
 
     # Patch _WATCH_TYPE_TO_PROVIDER to map our test type to a provider we can set
-    import core.discovery_scheduler as sched_mod
+    import gestaltworkframe.core.discovery_scheduler as sched_mod
     original_map = sched_mod._WATCH_TYPE_TO_PROVIDER
     sched_mod._WATCH_TYPE_TO_PROVIDER = {**original_map, "_test_type_creds": "github"}
 
@@ -99,10 +99,10 @@ async def test_poll_source_injects_auth_token_from_key_store(tmp_path):
 async def test_poll_source_no_key_store_leaves_auth_token_empty(tmp_path):
     """When key_store=None, auth_token stays empty (env-fallback in handler)."""
     from unittest.mock import AsyncMock, MagicMock
-    from core.discovery_handlers import DiscoverySourceLike, PollResult, register
-    from core.discovery_scheduler import _poll_source
+    from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike, PollResult, register
+    from gestaltworkframe.core.discovery_scheduler import _poll_source
     import asyncio
-    from core.db import DiscoverySource
+    from gestaltworkframe.core.db import DiscoverySource
 
     captured: list[DiscoverySourceLike] = []
 
@@ -136,7 +136,7 @@ async def test_poll_source_no_key_store_leaves_auth_token_empty(tmp_path):
 async def test_run_one_pass_accepts_key_store_param(tmp_path):
     """run_one_pass accepts key_store and admin_token without error."""
     import inspect
-    from core.discovery_scheduler import run_one_pass
+    from gestaltworkframe.core.discovery_scheduler import run_one_pass
     sig = inspect.signature(run_one_pass)
     assert "key_store" in sig.parameters
     assert "admin_token" in sig.parameters

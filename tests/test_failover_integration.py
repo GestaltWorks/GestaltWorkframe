@@ -6,9 +6,9 @@ Run with: uv run pytest -m integration tests/test_failover_integration.py -v
 """
 import os
 import pytest
-from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate
-from core.providers import LocalProvider, ClaudeProvider
-from core.router import LLMRouter
+from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate
+from gestaltworkframe.core.providers import LocalProvider, ClaudeProvider
+from gestaltworkframe.core.router import LLMRouter
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 

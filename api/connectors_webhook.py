@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from core.connector_registry import connector_registry
+from gestaltworkframe.core.connector_registry import connector_registry
 from gestalt_connector_protocol import WebhookRequest
 
 

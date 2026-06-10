@@ -29,16 +29,16 @@ from typing import Any
 
 from fastapi import Depends, Header, HTTPException, Request
 
-from core.chat_orchestrator import ChatTurnOrchestrator
-from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
-from core.orchestrator import Orchestrator
-from core.policy import CloudSpendPolicy
-from core.key_store import ApiKeyStore
-from core.provider_balance import OpenRouterBalanceChecker
-from core.provider_registry import ProviderRegistry
-from core.retrieval import KnowledgeRetriever
-from core.router import LLMRouter
-from core.runtime import GenerationConcurrencyPolicy, RuntimeControlPolicy, RuntimeManager
+from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
+from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+from gestaltworkframe.core.orchestrator import Orchestrator
+from gestaltworkframe.core.policy import CloudSpendPolicy
+from gestaltworkframe.core.key_store import ApiKeyStore
+from gestaltworkframe.core.provider_balance import OpenRouterBalanceChecker
+from gestaltworkframe.core.provider_registry import ProviderRegistry
+from gestaltworkframe.core.retrieval import KnowledgeRetriever
+from gestaltworkframe.core.router import LLMRouter
+from gestaltworkframe.core.runtime import GenerationConcurrencyPolicy, RuntimeControlPolicy, RuntimeManager
 
 logger = logging.getLogger(__name__)
 

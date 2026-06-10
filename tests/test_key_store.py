@@ -36,7 +36,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
 import api.main as api_main
-from core.key_store import ApiKeyStore
+from gestaltworkframe.core.key_store import ApiKeyStore
 
 
 # ---------------------------------------------------------------------------
@@ -173,12 +173,12 @@ def _make_client(tmp_path, monkeypatch):
     mock_provider.tool_calling_quality = "none"
 
     # Patch build_app_services to inject our key store backed by the tmp db.
-    from core.key_store import ApiKeyStore
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
-    from core.router import LLMRouter, ProviderRoute
-    from core.orchestrator import Orchestrator
-    from core.policy import CloudSpendPolicy
-    from core.chat_orchestrator import ChatTurnOrchestrator
+    from gestaltworkframe.core.key_store import ApiKeyStore
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    from gestaltworkframe.core.router import LLMRouter, ProviderRoute
+    from gestaltworkframe.core.orchestrator import Orchestrator
+    from gestaltworkframe.core.policy import CloudSpendPolicy
+    from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
     from api.services import AppServices, ChatMetrics
 
     async def _fake_build():
@@ -451,9 +451,9 @@ def test_test_provider_key_openai_invalid(tmp_path, monkeypatch):
 async def test_rotate_provider_key_updates_openai_compatible(tmp_path):
     """rotate_provider_key() calls update_api_key on matching provider instances."""
     from unittest.mock import AsyncMock
-    from core.key_store import ApiKeyStore
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
-    from core.router import LLMRouter, ProviderRoute
+    from gestaltworkframe.core.key_store import ApiKeyStore
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    from gestaltworkframe.core.router import LLMRouter, ProviderRoute
 
     provider = AsyncMock()
     provider.update_api_key = AsyncMock()
@@ -481,8 +481,8 @@ async def test_rotate_provider_key_updates_openai_compatible(tmp_path):
 async def test_rotate_provider_key_skips_wrong_budget_id(tmp_path):
     """rotate_provider_key() only touches routes with the matching provider_budget_id."""
     from unittest.mock import AsyncMock
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
-    from core.router import LLMRouter, ProviderRoute
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    from gestaltworkframe.core.router import LLMRouter, ProviderRoute
 
     provider_or = AsyncMock()
     provider_or.update_api_key = AsyncMock()
@@ -510,7 +510,7 @@ async def test_rotate_provider_key_skips_wrong_budget_id(tmp_path):
         provider_budget_id="anthropic",
     )
 
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
     gate = CloudBudgetGate(CloudBudgetConfig(enabled=False, sqlite_path=":memory:"))
     multi = MultiProviderBudgetGate(gate)
     router = LLMRouter(primary=provider_or, routes=[route_or, route_an], cloud_budget=multi)
@@ -527,7 +527,7 @@ async def test_rotate_provider_key_skips_wrong_budget_id(tmp_path):
 
 def test_key_store_has_github_and_brave_providers():
     """key_store._PROVIDER_ENV_VARS includes github and brave."""
-    from core.key_store import _PROVIDER_ENV_VARS
+    from gestaltworkframe.core.key_store import _PROVIDER_ENV_VARS
     assert "github" in _PROVIDER_ENV_VARS
     assert _PROVIDER_ENV_VARS["github"] == "APP_GITHUB_TOKEN"
     assert "brave" in _PROVIDER_ENV_VARS

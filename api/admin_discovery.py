@@ -33,9 +33,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.services import require_admin_token
-from core.db import get_session
-from core.discovery_digest import send_discovery_digest
-from core.discovery_queue import (
+from gestaltworkframe.core.db import get_session
+from gestaltworkframe.core.discovery_digest import send_discovery_digest
+from gestaltworkframe.core.discovery_queue import (
     add_watched_source,
     create_manual_find,
     decide_find,
@@ -56,13 +56,13 @@ from core.discovery_queue import (
     unpublish_find_from_latest,
     update_watched_source,
 )
-from core.url_metadata import (
+from gestaltworkframe.core.url_metadata import (
     ExtractedMetadata,
     MetadataExtractError,
     extract_url_metadata,
 )
-from core.discovery_scheduler import run_one_pass
-from core.discovery_summary import summarize_discovery_finds
+from gestaltworkframe.core.discovery_scheduler import run_one_pass
+from gestaltworkframe.core.discovery_summary import summarize_discovery_finds
 from kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
 from kb.target_safety import validate_public_https_url
 from kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
@@ -569,7 +569,7 @@ async def admin_discovery_queue_for_newsletter(
     draft (creating one if none exists) so the behavior matches what
     the old UI used to do.
     """
-    from core.newsletter import (
+    from gestaltworkframe.core.newsletter import (
         assign_find_to_issue as _assign_find_to_issue,
         create_empty_issue as _create_empty_issue,
         list_assignable_issues as _list_assignable_issues,
@@ -612,7 +612,7 @@ async def admin_discovery_assign_to_issue(
     """Tag a find for a specific newsletter issue or clear the
     assignment. Powers the per-find dropdown on /admin/discovery.
     """
-    from core.newsletter import assign_find_to_issue as _assign_find_to_issue
+    from gestaltworkframe.core.newsletter import assign_find_to_issue as _assign_find_to_issue
 
     try:
         find = await _assign_find_to_issue(session, find_id, request_body.issue_id)
@@ -627,8 +627,8 @@ async def _serialize_find_shim(find, session):
     """Re-serialize a DiscoveryFind so the response matches the existing
     /newsletter-queue shape. Routes through the queue module's
     serializer to keep field coverage consistent."""
-    from core.discovery_queue import _serialize_find
-    from core.db import DiscoverySource
+    from gestaltworkframe.core.discovery_queue import _serialize_find
+    from gestaltworkframe.core.db import DiscoverySource
     from sqlmodel import select as _select
 
     source = (

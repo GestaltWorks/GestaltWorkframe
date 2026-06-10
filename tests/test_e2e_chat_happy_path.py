@@ -33,8 +33,8 @@ from sqlmodel import SQLModel
 import api.main as api_main
 from api.chat import ChatRequest as _ChatRequest  # noqa: F401  - keep import path validated
 from api.services import AppServices, ChatMetrics
-from core.db import Conversation, MessageRecord
-from core.policy import ChatMode, ConversationStage, ResponsePolicy, RoutingDecision, ToneSignal, UserIntent
+from gestaltworkframe.core.db import Conversation, MessageRecord
+from gestaltworkframe.core.policy import ChatMode, ConversationStage, ResponsePolicy, RoutingDecision, ToneSignal, UserIntent
 
 
 class _FakeChatTurns:
@@ -99,8 +99,8 @@ async def _start_app(tmp_path):
     # don't go through Depends, so they use the module-level async_session_maker.
     # Point that at our test maker for the duration of the test.
     import importlib
-    engine_mod = importlib.import_module("core.db.engine")
-    crud_mod = importlib.import_module("core.db.crud")
+    engine_mod = importlib.import_module("gestaltworkframe.core.db.engine")
+    crud_mod = importlib.import_module("gestaltworkframe.core.db.crud")
     original_maker = engine_mod.async_session_maker
     engine_mod.async_session_maker = maker
     crud_mod.async_session_maker = maker
@@ -111,8 +111,8 @@ async def _start_app(tmp_path):
 def _restore_app(original_maker):
     api_main.app.dependency_overrides.clear()
     import importlib
-    engine_mod = importlib.import_module("core.db.engine")
-    crud_mod = importlib.import_module("core.db.crud")
+    engine_mod = importlib.import_module("gestaltworkframe.core.db.engine")
+    crud_mod = importlib.import_module("gestaltworkframe.core.db.crud")
     engine_mod.async_session_maker = original_maker
     crud_mod.async_session_maker = original_maker
     if hasattr(api_main.app.state, "services"):

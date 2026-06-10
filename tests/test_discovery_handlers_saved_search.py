@@ -3,8 +3,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from core.discovery_handlers import DiscoverySourceLike
-from core.discovery_handlers.saved_search import poll
+from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike
+from gestaltworkframe.core.discovery_handlers.saved_search import poll
 
 
 @pytest.mark.asyncio

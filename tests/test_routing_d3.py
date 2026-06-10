@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.orchestrator import Orchestrator
-from core.policy import (
+from gestaltworkframe.core.orchestrator import Orchestrator
+from gestaltworkframe.core.policy import (
     ChatMode,
     CloudSpendPolicy,
     ResponsePolicy,
@@ -30,8 +30,8 @@ from core.policy import (
     UserIntent,
     UserNeed,
 )
-from core.router import ROUTE_COST_ADJUSTMENTS
-from core.routing_frame import classify_route
+from gestaltworkframe.core.router import ROUTE_COST_ADJUSTMENTS
+from gestaltworkframe.core.routing_frame import classify_route
 
 
 # ---- Change 1: best_value leans toward cheaper tiers ----------------------

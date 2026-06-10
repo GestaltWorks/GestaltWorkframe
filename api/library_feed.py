@@ -18,13 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 from sqlmodel import select
 
-from core.db import DiscoverySource, get_session
-from core.discovery_queue import (
+from gestaltworkframe.core.db import DiscoverySource, get_session
+from gestaltworkframe.core.discovery_queue import (
     list_public_latest_finds,
     list_sources_with_activity,
     list_ticker_finds,
 )
-from core.newsletter import (
+from gestaltworkframe.core.newsletter import (
     get_issue_detail,
     list_issues as list_newsletter_issues,
 )
@@ -114,7 +114,7 @@ async def library_issue_detail_public(
     needs to display the issue.
     """
     from sqlmodel import select
-    from core.db.models import NewsletterIssue
+    from gestaltworkframe.core.db.models import NewsletterIssue
 
     response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=1800"
     issue = (

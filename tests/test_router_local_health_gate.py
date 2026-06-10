@@ -1,7 +1,7 @@
 import pytest
 
-from core.model_profile import GenerationParams
-from core.router import LLMRouter
+from gestaltworkframe.core.model_profile import GenerationParams
+from gestaltworkframe.core.router import LLMRouter
 
 
 class _StubLocalProvider:

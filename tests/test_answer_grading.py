@@ -1,6 +1,6 @@
-from core.answer_grading import UNKNOWN_ANSWER, AnswerGrader
-from core.policy import ChatMode, RoutingDecision, UserIntent
-from core.retrieval import RetrievalResult
+from gestaltworkframe.core.answer_grading import UNKNOWN_ANSWER, AnswerGrader
+from gestaltworkframe.core.policy import ChatMode, RoutingDecision, UserIntent
+from gestaltworkframe.core.retrieval import RetrievalResult
 
 
 def _decision(retrieval_required: bool = True, retrieval_tool: str | None = None) -> RoutingDecision:

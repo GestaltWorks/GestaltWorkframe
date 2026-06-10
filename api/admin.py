@@ -30,18 +30,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel  # noqa: F401  - keep sqlmodel imported alongside select for parity
 
 from api.services import AppServices, enabled_cost_tiers, get_app_services, require_admin_token
-from core.key_store import ApiKeyStore, _PROVIDER_ENV_VARS as _KEY_STORE_PROVIDER_ENV_VARS
-from core.key_validation_monitor import KeyValidationMonitor
-from core.rate_limiter import get_key_store_rate_limiter
-from core.provider_balance import BalanceSnapshot, local_tracking_balance
-from core.db import ContactRecord, TerminalIntakeRecord, async_session_maker, get_session
-from core.handoff_packets import (
+from gestaltworkframe.core.key_store import ApiKeyStore, _PROVIDER_ENV_VARS as _KEY_STORE_PROVIDER_ENV_VARS
+from gestaltworkframe.core.key_validation_monitor import KeyValidationMonitor
+from gestaltworkframe.core.rate_limiter import get_key_store_rate_limiter
+from gestaltworkframe.core.provider_balance import BalanceSnapshot, local_tracking_balance
+from gestaltworkframe.core.db import ContactRecord, TerminalIntakeRecord, async_session_maker, get_session
+from gestaltworkframe.core.handoff_packets import (
     build_contact_handoff_packet,
     build_terminal_intake_handoff_packet,
     packet_to_dict,
 )
-from core.retention import RetentionPolicy, sweep as retention_sweep
-from core.router import ROUTING_STRATEGIES
+from gestaltworkframe.core.retention import RetentionPolicy, sweep as retention_sweep
+from gestaltworkframe.core.router import ROUTING_STRATEGIES
 
 
 ADMIN_HANDOFF_LIMIT = 12
@@ -135,7 +135,7 @@ async def _test_provider_key(provider_id: str, api_key: str, services: AppServic
         await monitor.record_attempt(provider_id, success, failure_type or None, error)
 
     if provider_id == "openrouter":
-        from core.provider_balance import OpenRouterBalanceChecker
+        from gestaltworkframe.core.provider_balance import OpenRouterBalanceChecker
         checker = OpenRouterBalanceChecker(api_key)
         snap = await checker.get()
         result = ProviderKeyTestResult(valid=snap.available, error=snap.error)
@@ -257,7 +257,7 @@ async def _cloud_budget_with_balance(services: AppServices) -> dict[str, Any]:
     providers = snap.get("providers")
     if not providers:
         return snap
-    from core.cloud_budget import MultiProviderBudgetGate
+    from gestaltworkframe.core.cloud_budget import MultiProviderBudgetGate
     if not isinstance(services.cloud_budget, MultiProviderBudgetGate):
         return snap
     for pid, entry in providers.items():
@@ -274,7 +274,7 @@ async def _get_provider_balance(services: AppServices, provider_id: str) -> Bala
     if provider_id == "openrouter" and services.balance_checker is not None:
         return await services.balance_checker.get()
     # For other providers, compute estimated remaining from budget - usage.
-    from core.cloud_budget import MultiProviderBudgetGate
+    from gestaltworkframe.core.cloud_budget import MultiProviderBudgetGate
     if isinstance(services.cloud_budget, MultiProviderBudgetGate):
         gate = services.cloud_budget.provider_gates.get(provider_id)
         if gate is not None:
@@ -361,7 +361,7 @@ async def admin_policy_patch(
             services.llm_router.set_route_override(route_name, enabled)
 
     if patch.provider_budgets is not None:
-        from core.cloud_budget import MultiProviderBudgetGate
+        from gestaltworkframe.core.cloud_budget import MultiProviderBudgetGate
         if isinstance(services.cloud_budget, MultiProviderBudgetGate):
             for pid, limits in patch.provider_budgets.items():
                 await services.cloud_budget.update_provider_budget(

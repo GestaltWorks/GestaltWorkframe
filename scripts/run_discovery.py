@@ -17,9 +17,9 @@ import json
 import logging
 import sys
 
-from core.db import async_session_maker, init_db
-from core.discovery_queue import list_recent_finds, list_source_health
-from core.discovery_scheduler import run_one_pass
+from gestaltworkframe.core.db import async_session_maker, init_db
+from gestaltworkframe.core.discovery_queue import list_recent_finds, list_source_health
+from gestaltworkframe.core.discovery_scheduler import run_one_pass
 
 
 async def _main(args: argparse.Namespace) -> int:

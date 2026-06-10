@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from langchain_core.documents import Document
 
-from core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
 from mcp_servers.kb_server import get_vectorstore
 
 

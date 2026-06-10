@@ -27,8 +27,8 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.services import require_admin_token
-from core.db import get_session
-from core.newsletter import (
+from gestaltworkframe.core.db import get_session
+from gestaltworkframe.core.newsletter import (
     approve_and_schedule,
     cancel_scheduled_send,
     compose_pending_issue,
@@ -315,7 +315,7 @@ async def admin_newsletter_delete_issue(
     issue row is removed from the DB. Confirmation lives in the UI
     layer; this endpoint trusts that the caller meant it.
     """
-    from core.newsletter import delete_issue
+    from gestaltworkframe.core.newsletter import delete_issue
 
     try:
         summary = await delete_issue(session, issue_id, deleted_by="admin_panel")
@@ -337,7 +337,7 @@ async def admin_newsletter_unpublish_issue(
     status to awaiting_approval. Drafts return 409: use the delete
     endpoint instead.
     """
-    from core.newsletter import unpublish_issue
+    from gestaltworkframe.core.newsletter import unpublish_issue
 
     try:
         issue = await unpublish_issue(session, issue_id, unpublished_by="admin_panel")

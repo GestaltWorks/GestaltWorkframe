@@ -4,7 +4,7 @@ import hmac
 from fastapi.testclient import TestClient
 
 from api.main import app
-from core.connector_registry import connector_registry
+from gestaltworkframe.core.connector_registry import connector_registry
 from gestalt_connector_protocol import ConnectorConfig, Document, SourceMetadata, WebhookRequest, WebhookResult
 
 

@@ -8,7 +8,7 @@ in their deployment bundle; this test verifies the framework default.
 
 from __future__ import annotations
 
-from core.personas import (
+from gestaltworkframe.core.personas import (
     AUTOMATOR_PERSONA,
     DEFAULT_BOT_IDENTITY,
     EDUCATOR_PERSONA,

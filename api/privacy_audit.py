@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends
 from sqlmodel import select
 
 from api.services import require_admin_token
-from core.db import DiscoveryFind, async_session_maker
-from core.discovery_document import document_for_find
+from gestaltworkframe.core.db import DiscoveryFind, async_session_maker
+from gestaltworkframe.core.discovery_document import document_for_find
 
 
 router = APIRouter(tags=["privacy-audit"])

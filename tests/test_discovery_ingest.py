@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
 from kb.discovery_ingest import discovery_find_document, ingest_approved_find_into_chroma
 
 

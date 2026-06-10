@@ -17,8 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-from core.db.migrations import _collapse_artifact_finds_into_categories
-from core.db.models import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.db.migrations import _collapse_artifact_finds_into_categories
+from gestaltworkframe.core.db.models import DiscoveryFind, DiscoverySource
 
 
 def _make_engine(tmp_path):

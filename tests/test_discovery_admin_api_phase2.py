@@ -19,7 +19,7 @@ from sqlmodel import SQLModel
 
 import api.admin_discovery as api_admin_discovery
 import api.main as api_main
-from core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
 
 
 def _client(tmp_path, monkeypatch):

@@ -2,9 +2,9 @@ import json
 import pytest
 from pathlib import Path
 from unittest.mock import patch
-from core.model_profile import ProfileStore
-from core.provider_registry import LocalProviderProfile, ProviderRegistry, SecondaryProviderProfile, _local_profile_base_url
-from core.providers import ClaudeProvider, LocalProvider, OllamaProvider, OpenAICompatibleProvider
+from gestaltworkframe.core.model_profile import ProfileStore
+from gestaltworkframe.core.provider_registry import LocalProviderProfile, ProviderRegistry, SecondaryProviderProfile, _local_profile_base_url
+from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OllamaProvider, OpenAICompatibleProvider
 
 
 def _registry(env: dict) -> ProviderRegistry:
@@ -375,7 +375,7 @@ def test_preferred_provider_id_empty_by_default(tmp_path):
 
 def test_live_profiles_claude_openrouter_has_anthropic_preference():
     """The real profiles.json sets preferred_provider_id=anthropic on claude-via-OpenRouter."""
-    from core.model_profile import get_default_store
+    from gestaltworkframe.core.model_profile import get_default_store
     store = get_default_store()
     for name in ("openrouter-claude-sonnet-4-6", "openrouter-claude-opus-4-7"):
         profile = store.get(name)

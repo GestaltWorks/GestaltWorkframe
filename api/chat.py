@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.request_helpers import client_ip, make_body_size_limit
 from api.services import AppServices, get_app_services
-from core.db import (
+from gestaltworkframe.core.db import (
     add_chat_usage_event,
     add_chat_usage_event_in_new_session,
     add_message,

@@ -30,8 +30,8 @@ from sqlmodel import SQLModel, select
 
 import api.admin_discovery as api_admin_discovery
 import api.main as api_main
-from core import newsletter as newsletter_module
-from core.db import (
+from gestaltworkframe.core import newsletter as newsletter_module
+from gestaltworkframe.core.db import (
     DiscoveryFind,
     DiscoverySource,
     NewsletterIssue,

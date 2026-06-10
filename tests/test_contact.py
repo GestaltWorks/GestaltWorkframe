@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
 from api import contact
-from core.db import ContactNotificationRecord, ContactRecord
+from gestaltworkframe.core.db import ContactNotificationRecord, ContactRecord
 
 
 async def _test_app(tmp_path, monkeypatch, notification=None):

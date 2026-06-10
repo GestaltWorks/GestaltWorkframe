@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import api.main as api_main
-from core.policy import CloudSpendPolicy
-from core.router import LLMRouter
+from gestaltworkframe.core.policy import CloudSpendPolicy
+from gestaltworkframe.core.router import LLMRouter
 
 
 def _provider(model: str, healthy: bool = True):

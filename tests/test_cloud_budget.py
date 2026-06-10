@@ -2,9 +2,9 @@ from unittest.mock import patch
 
 import pytest
 
-import core.cloud_budget as cloud_budget
-from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
-from core.policy import CloudSpendPolicy
+import gestaltworkframe.core.cloud_budget as cloud_budget
+from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
+from gestaltworkframe.core.policy import CloudSpendPolicy
 
 
 def _enabled_config(tmp_path, **overrides):
@@ -452,11 +452,11 @@ async def test_provider_budgets_patch_mutates_caps(tmp_path):
     """provider_budgets in AdminPolicyPatch mutates in-memory ProviderBudgetConfig caps."""
     from unittest.mock import AsyncMock, MagicMock
     from api.admin import AdminPolicyPatch, _apply_admin_policy
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
-    from core.router import LLMRouter, ProviderRoute
-    from core.orchestrator import Orchestrator
-    from core.policy import CloudSpendPolicy
-    from core.chat_orchestrator import ChatTurnOrchestrator
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
+    from gestaltworkframe.core.router import LLMRouter, ProviderRoute
+    from gestaltworkframe.core.orchestrator import Orchestrator
+    from gestaltworkframe.core.policy import CloudSpendPolicy
+    from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
     from api.services import AppServices, ChatMetrics
 
     db_path = str(tmp_path / "test.db")
@@ -513,11 +513,11 @@ async def test_provider_budgets_patch_rejects_both_zero_caps(tmp_path):
     from unittest.mock import AsyncMock, MagicMock
     from fastapi import HTTPException
     from api.admin import AdminPolicyPatch, _apply_admin_policy
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
-    from core.router import LLMRouter, ProviderRoute
-    from core.orchestrator import Orchestrator
-    from core.policy import CloudSpendPolicy
-    from core.chat_orchestrator import ChatTurnOrchestrator
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
+    from gestaltworkframe.core.router import LLMRouter, ProviderRoute
+    from gestaltworkframe.core.orchestrator import Orchestrator
+    from gestaltworkframe.core.policy import CloudSpendPolicy
+    from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
     from api.services import AppServices, ChatMetrics
 
     db_path = str(tmp_path / "test.db")

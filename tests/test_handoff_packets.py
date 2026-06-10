@@ -1,4 +1,4 @@
-from core.handoff_packets import (
+from gestaltworkframe.core.handoff_packets import (
     build_contact_handoff_packet,
     build_terminal_intake_handoff_packet,
     render_packet_html,

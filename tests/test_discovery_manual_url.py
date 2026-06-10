@@ -27,10 +27,10 @@ from sqlmodel import SQLModel, select
 
 import api.admin_discovery as api_admin_discovery
 import api.main as api_main
-from core import url_metadata as url_metadata_module
-from core.db import DiscoveryFind, DiscoverySource
-from core.discovery_queue import MANUAL_CURATION_SOURCE_NAME
-from core.url_metadata import (
+from gestaltworkframe.core import url_metadata as url_metadata_module
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.discovery_queue import MANUAL_CURATION_SOURCE_NAME
+from gestaltworkframe.core.url_metadata import (
     MetadataExtractError,
     _parse_head,
     extract_url_metadata,

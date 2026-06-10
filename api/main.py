@@ -107,8 +107,8 @@ from api.services import (
     get_app_services,
     require_admin_token,
 )
-from core.cloud_budget import CloudBudgetGate  # re-exported for tests
-from core.db import (
+from gestaltworkframe.core.cloud_budget import CloudBudgetGate  # re-exported for tests
+from gestaltworkframe.core.db import (
     ContactRecord,
     TerminalIntakeRecord,
     add_chat_usage_event,
@@ -124,13 +124,13 @@ from core.db import (
     save_intake_record,
     save_terminal_intake_submission,
 )
-from core.handoff_packets import (
+from gestaltworkframe.core.handoff_packets import (
     build_contact_handoff_packet,
     build_terminal_intake_handoff_packet,
     packet_to_dict,
 )
-from core.discovery_digest import send_discovery_digest
-from core.discovery_queue import (
+from gestaltworkframe.core.discovery_digest import send_discovery_digest
+from gestaltworkframe.core.discovery_queue import (
     add_watched_source,
     decide_find,
     list_public_latest_finds,
@@ -140,9 +140,9 @@ from core.discovery_queue import (
     promote_find_to_source,
     update_watched_source,
 )
-from core.discovery_scheduler import run_one_pass
-from core.discovery_summary import summarize_discovery_finds
-from core.router import ROUTING_STRATEGIES
+from gestaltworkframe.core.discovery_scheduler import run_one_pass
+from gestaltworkframe.core.discovery_summary import summarize_discovery_finds
+from gestaltworkframe.core.router import ROUTING_STRATEGIES
 # Backward-compat: tests historically reached for `api.main.clean_intake_text`.
 # The implementation now lives wherever the consumer needs it; re-export here.
 from api.chat import clean_intake_text  # noqa: F401
