@@ -10,10 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-import api.admin_discovery as api_admin_discovery
-import api.main as api_main
-from core.db import DiscoveryAudit, DiscoveryFind, DiscoverySource
-from kb.library_publisher import LibraryPublisherError, LibraryPublishResult
+import gestaltworkframe.api.admin_discovery as api_admin_discovery
+import gestaltworkframe.api.main as api_main
+from gestaltworkframe.core.db import DiscoveryAudit, DiscoveryFind, DiscoverySource
+from gestaltworkframe.kb.library_publisher import LibraryPublisherError, LibraryPublishResult
 
 
 def _source_body(name: str = "manual_source") -> dict[str, object]:
@@ -47,7 +47,7 @@ async def _override_session(maker) -> AsyncGenerator[AsyncSession, None]:
 def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("ADMIN_POLICY_TOKEN", "test-admin")
     api_admin_discovery._discovery_run_once_last_started_at = 0.0
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'api.db'}")
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'gestaltworkframe.api.db'}")
 
     async def init() -> sessionmaker:
         async with engine.begin() as conn:
@@ -234,7 +234,7 @@ def test_admin_discovery_approve_and_reject_endpoints(tmp_path, monkeypatch):
     client, engine, maker = _client(tmp_path, monkeypatch)
     ingested = []
     published = []
-    monkeypatch.setattr("core.discovery_queue.ingest_approved_find_into_chroma", lambda find, source: ingested.append((find.id, source.name)))
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.ingest_approved_find_into_chroma", lambda find, source: ingested.append((find.id, source.name)))
 
     async def fake_publish(find, source, *, notes: str = "", target_path: str = ""):
         published.append((find.id, source.name, notes))
@@ -244,7 +244,7 @@ def test_admin_discovery_approve_and_reject_endpoints(tmp_path, monkeypatch):
             path="discovery/first.md",
         )
 
-    monkeypatch.setattr("core.discovery_queue.publish_find_to_library", fake_publish)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.publish_find_to_library", fake_publish)
     try:
         import asyncio
 
@@ -311,7 +311,7 @@ def test_admin_discovery_approve_defaults_to_public_update_without_ingest_or_lib
         published.append((args, kwargs))
         return LibraryPublishResult(public_url="https://example.test/file.md", commit_url="https://example.test/commit", path="file.md")
 
-    monkeypatch.setattr("core.discovery_queue.publish_find_to_library", fake_publish)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.publish_find_to_library", fake_publish)
     try:
         async def seed() -> str:
             async with maker() as session:
@@ -505,7 +505,7 @@ def test_admin_discovery_approve_publish_failure_keeps_find_pending(tmp_path, mo
     async def broken_publish(*_args, **_kwargs):
         raise LibraryPublisherError("simulated publish failure with\nsecond line")
 
-    monkeypatch.setattr("core.discovery_queue.publish_find_to_library", broken_publish)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.publish_find_to_library", broken_publish)
     try:
         import asyncio
 
@@ -562,7 +562,7 @@ def test_admin_discovery_promotes_approved_find_to_library(tmp_path, monkeypatch
             path=target_path or "discovery/approved/test.md",
         )
 
-    monkeypatch.setattr("core.discovery_queue.publish_find_to_library", fake_publish)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.publish_find_to_library", fake_publish)
     try:
         import asyncio
 
@@ -617,8 +617,8 @@ def test_admin_discovery_unpublishes_latest_library_and_kb(tmp_path, monkeypatch
         deleted.append((path, title))
         return DeleteResult()
 
-    monkeypatch.setattr("core.discovery_queue.delete_library_file", fake_delete_result)
-    monkeypatch.setattr("core.discovery_queue.purge_discovery_find_from_chroma", lambda find_id: purged.append(find_id))
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.delete_library_file", fake_delete_result)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.purge_discovery_find_from_chroma", lambda find_id: purged.append(find_id))
     try:
         async def seed() -> str:
             async with maker() as session:
@@ -750,7 +750,7 @@ def test_admin_discovery_unpublish_library_failure_is_audited(tmp_path, monkeypa
     async def broken_delete(*_args, **_kwargs):
         raise LibraryPublisherError("delete failed")
 
-    monkeypatch.setattr("core.discovery_queue.delete_library_file", broken_delete)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.delete_library_file", broken_delete)
     try:
         async def seed() -> str:
             async with maker() as session:
@@ -801,7 +801,7 @@ def test_admin_discovery_purge_kb_failure_keeps_ingested_state(tmp_path, monkeyp
     def broken_purge(_find_id: str) -> None:
         raise RuntimeError("chroma unavailable")
 
-    monkeypatch.setattr("core.discovery_queue.purge_discovery_find_from_chroma", broken_purge)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_queue.purge_discovery_find_from_chroma", broken_purge)
     try:
         async def seed() -> str:
             async with maker() as session:

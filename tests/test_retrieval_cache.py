@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-import core.retrieval as retrieval_mod
-from core.discovery_retrieval import DiscoveryContext
-from core.retrieval import KnowledgeRetriever, RetrievalResult
+import gestaltworkframe.core.retrieval as retrieval_mod
+from gestaltworkframe.core.discovery_retrieval import DiscoveryContext
+from gestaltworkframe.core.retrieval import KnowledgeRetriever, RetrievalResult
 
 
 @pytest.fixture

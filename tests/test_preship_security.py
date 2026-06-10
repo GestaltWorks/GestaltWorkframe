@@ -28,11 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-import api.admin_discovery as api_admin_discovery
-import api.main as api_main
-from core import newsletter as newsletter_module
-from core import subscribers as subscribers_module
-from core.db import (
+import gestaltworkframe.api.admin_discovery as api_admin_discovery
+import gestaltworkframe.api.main as api_main
+from gestaltworkframe.core import newsletter as newsletter_module
+from gestaltworkframe.core import subscribers as subscribers_module
+from gestaltworkframe.core.db import (
     ContactRecord,
     DiscoveryFind,
     DiscoverySource,
@@ -328,7 +328,7 @@ def test_newsletter_subscribe_accepts_allowed_origin(tmp_path, monkeypatch):
 def test_github_repo_release_title_uses_colon_not_em_dash():
     """Public-facing newsletter card titles must not carry em dashes."""
     from pathlib import Path
-    source = Path("core/discovery_handlers/github_repo.py").read_text(encoding="utf-8")
+    source = Path("gestaltworkframe/core/discovery_handlers/github_repo.py").read_text(encoding="utf-8")
     assert "—" not in source
     # And the actual title format string uses a colon now.
     assert '{owner_repo}: {title}' in source

@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-from core import linkedin as linkedin_module
-from core import newsletter as newsletter_module
-from core.db import (
+from gestaltworkframe.core import linkedin as linkedin_module
+from gestaltworkframe.core import newsletter as newsletter_module
+from gestaltworkframe.core.db import (
     DiscoveryFind,
     DiscoverySource,
     NewsletterDelivery,

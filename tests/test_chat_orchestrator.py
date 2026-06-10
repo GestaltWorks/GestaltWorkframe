@@ -1,11 +1,11 @@
 import pytest
 
-from core.answer_grading import LEGACY_UNKNOWN_ANSWER
-from core.chat_orchestrator import ChatTurnOrchestrator, SAFETY_REFUSAL
-from core.orchestrator import Orchestrator
-from core.policy import ChatMode, CloudSpendPolicy, RoutingDecision, ToolExecutionMode, UserIntent
-from core.retrieval import RetrievalResult
-from core.tool_policy import REFERENCE_SEARCH, WORKFLOW_PATTERN_SEARCH
+from gestaltworkframe.core.answer_grading import LEGACY_UNKNOWN_ANSWER
+from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator, SAFETY_REFUSAL
+from gestaltworkframe.core.orchestrator import Orchestrator
+from gestaltworkframe.core.policy import ChatMode, CloudSpendPolicy, RoutingDecision, ToolExecutionMode, UserIntent
+from gestaltworkframe.core.retrieval import RetrievalResult
+from gestaltworkframe.core.tool_policy import REFERENCE_SEARCH, WORKFLOW_PATTERN_SEARCH
 
 
 class _Router:

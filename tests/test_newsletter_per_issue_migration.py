@@ -32,13 +32,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-from core.db.migrations import (
+from gestaltworkframe.core.db.migrations import (
     _collapse_artifact_finds_into_categories,
     _migrate_newsletter_issue_table,
     _assign_pending_finds_to_catchup_issue,
     _label_letter,
 )
-from core.db.models import DiscoveryFind, DiscoverySource, NewsletterIssue
+from gestaltworkframe.core.db.models import DiscoveryFind, DiscoverySource, NewsletterIssue
 
 
 def _make_engine(tmp_path):
@@ -53,7 +53,7 @@ def test_label_letter_helper_matches_live_logic():
     """The migration's _label_letter must match the live core.newsletter
     one exactly so backfilled labels and runtime-created labels share
     the same sequence."""
-    from core.newsletter import _label_letter as live_label_letter
+    from gestaltworkframe.core.newsletter import _label_letter as live_label_letter
 
     for idx in [0, 1, 25, 26, 51, 52, 100, 675, 676]:
         assert _label_letter(idx) == live_label_letter(idx), f"divergence at idx={idx}"

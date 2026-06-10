@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-from core.db import (
+from gestaltworkframe.core.db import (
     DISCOVERY_AUDIT_EVENTS,
     DISCOVERY_AUDIT_SOURCE_ADDED,
     DISCOVERY_AUDIT_SOURCE_UPDATED,
@@ -18,14 +18,14 @@ from core.db import (
     DiscoveryFind,
     DiscoverySource,
 )
-from core import discovery_handlers
-from core.discovery_handlers import DiscoverySourceLike, FindCandidate, PollResult
-from core.discovery_scheduler import (
+from gestaltworkframe.core import discovery_handlers
+from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike, FindCandidate, PollResult
+from gestaltworkframe.core.discovery_scheduler import (
     reconcile_watchlist_seed,
     run_one_pass,
     select_due_sources,
 )
-from kb.watchlist import WatchedSource
+from gestaltworkframe.kb.watchlist import WatchedSource
 
 
 def _seed_entry(
@@ -260,7 +260,7 @@ async def test_run_one_pass_contains_result_persistence_errors(tmp_path, monkeyp
         raise RuntimeError("simulated persistence failure")
 
     monkeypatch.setitem(discovery_handlers._HANDLERS, "github_repo_watch", handler)
-    monkeypatch.setattr("core.discovery_scheduler._persist_finds", broken_persist)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_scheduler._persist_finds", broken_persist)
 
     async with maker() as session:
         report = await run_one_pass(session, seed=[_seed_entry()])

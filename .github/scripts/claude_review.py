@@ -19,12 +19,12 @@ ALLOW_PATTERNS = [
     "*.toml", "*.json", "*.ps1", "web/**/*.ts", "web/**/*.tsx", ".github/**/*.yml",
 ]
 PRIORITY_PATTERNS = [
-    "api/main.py", "llm/*.ps1", "llm/profiles.json",
+    "gestaltworkframe/api/main.py", "llm/*.ps1", "llm/profiles.json",
     ".github/workflows/*.yml", ".github/scripts/*.py",
     "tests/test_api_main.py", "claude.md", "README.md", "objectives.md",
 ]
 EXCLUDE_PATTERNS = [
-    "uv.lock", "web/pnpm-lock.yaml", "kb/chroma_db/**",
+    "uv.lock", "web/pnpm-lock.yaml", "gestaltworkframe/kb/chroma_db/**",
 ]
 SECRET_PATTERNS = [
     (re.compile(r"(?i)(api[_-]?key|token|secret|password|passwd|client[_-]?secret)\s*[:=]\s*[^\s'\"]+"), r"\1=<REDACTED>"),

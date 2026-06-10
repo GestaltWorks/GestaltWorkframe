@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-from core.db import DiscoveryFind, DiscoverySource
-from core.discovery_scout import DiscoveryScoutConfig, run_discovery_scout
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.discovery_scout import DiscoveryScoutConfig, run_discovery_scout
 
 
 class _Provider:

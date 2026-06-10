@@ -6,12 +6,12 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import api.chat as api_chat
-import api.main as api_main
-from core.db import add_chat_usage_event as db_add_chat_usage_event
-from core.db import chat_usage_snapshot as db_chat_usage_snapshot
-from core.db import ContactRecord, TerminalIntakeRecord
-from api.main import INTAKE_QUESTIONS, ChatRequest, get_intake_questions
+import gestaltworkframe.api.chat as api_chat
+import gestaltworkframe.api.main as api_main
+from gestaltworkframe.core.db import add_chat_usage_event as db_add_chat_usage_event
+from gestaltworkframe.core.db import chat_usage_snapshot as db_chat_usage_snapshot
+from gestaltworkframe.core.db import ContactRecord, TerminalIntakeRecord
+from gestaltworkframe.api.main import INTAKE_QUESTIONS, ChatRequest, get_intake_questions
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel

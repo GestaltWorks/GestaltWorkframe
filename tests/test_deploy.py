@@ -11,7 +11,7 @@ def _workflow_env_value(workflow: str, name: str) -> int:
 def test_deploy_preserves_production_kb_vector_store():
     script = Path(".github/scripts/deploy_vps.sh").read_text(encoding="utf-8")
 
-    assert "--exclude 'kb/chroma_db/'" in script
+    assert "--exclude 'gestaltworkframe/kb/chroma_db/'" in script
 
 
 def test_deploy_preserves_generated_vps_ssh_keys():

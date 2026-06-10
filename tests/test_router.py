@@ -2,9 +2,9 @@ import asyncio
 import pytest
 import time
 from unittest.mock import AsyncMock, MagicMock
-from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate
-from core.router import LLMRouter, ProviderRoute
-from core.runtime import GenerationConcurrencyPolicy, RuntimeControlPolicy, RuntimeManager
+from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate
+from gestaltworkframe.core.router import LLMRouter, ProviderRoute
+from gestaltworkframe.core.runtime import GenerationConcurrencyPolicy, RuntimeControlPolicy, RuntimeManager
 
 
 def _make_provider(healthy: bool = True, response: dict | None = None, raises: Exception | None = None):
@@ -998,7 +998,7 @@ def test_route_score_no_bonus_when_preferred_provider_id_empty():
 
 def test_route_score_bonus_when_preferred_matches_budget_id(tmp_path):
     """A route where preferred_provider_id == provider_budget_id gets bonus when headroom > 0."""
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
     p = _make_provider()
     # Direct Anthropic route
     direct = _pref_route("claude-direct", p, preferred_provider_id="anthropic", provider_budget_id="anthropic")
@@ -1049,7 +1049,7 @@ def test_provider_budget_headroom_no_multi_gate_returns_1():
 
 def test_provider_budget_headroom_unconfigured_provider_returns_1(tmp_path):
     """A provider not in the multi gate config returns 1.0."""
-    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
     p = _make_provider()
     global_gate = CloudBudgetGate(CloudBudgetConfig(
         enabled=True, max_calls_per_turn=5, max_calls_per_session=50,

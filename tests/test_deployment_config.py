@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 import pytest
 
-from api.main import app
-from core.deployment_config import DeploymentConfig, get_deployment_config, reload_deployment_config
-import core.deployment_config as deployment_config_mod
+from gestaltworkframe.api.main import app
+from gestaltworkframe.core.deployment_config import DeploymentConfig, get_deployment_config, reload_deployment_config
+import gestaltworkframe.core.deployment_config as deployment_config_mod
 
 
 def test_default_deployment_config_loads_test_brand(monkeypatch):
@@ -140,7 +140,7 @@ def test_personas_config_fallback_when_missing(tmp_path, monkeypatch):
 
 def test_get_persona_applies_name_override(monkeypatch):
     """get_persona returns the deployment-overridden name when personas.yaml has an entry."""
-    from core.personas import get_persona
+    from gestaltworkframe.core.personas import get_persona
     monkeypatch.setenv("DEPLOYMENT_ID", "test-brand")
     reload_deployment_config()
     persona = get_persona("pipeline")
@@ -151,8 +151,8 @@ def test_get_persona_applies_name_override(monkeypatch):
 
 def test_get_persona_fallback_when_no_override(monkeypatch):
     """get_persona returns the hardcoded default when deployment has no personas.yaml."""
-    from core.personas import get_persona, PIPELINE_PERSONA
-    from core import deployment_config as dc_mod
+    from gestaltworkframe.core.personas import get_persona, PIPELINE_PERSONA
+    from gestaltworkframe.core import deployment_config as dc_mod
     tmp = __import__("tempfile").mkdtemp()
     import pathlib
     bare = pathlib.Path(tmp) / "deployments" / "bare"

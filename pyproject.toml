@@ -38,6 +38,14 @@ dev = [
     "pytest-cov>=7.1.0",
 ]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gestaltworkframe*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = [".", "packages/gestalt-connector-protocol", "packages/gestalt-connector-fs", "packages/gestalt-connector-itglue", "packages/gestalt-connector-hudu", "packages/gestalt-connector-msgraph-files", "packages/gestalt-connector-s3"]
@@ -47,7 +55,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["api", "core", "kb"]
+source = ["gestaltworkframe.api", "gestaltworkframe.core", "gestaltworkframe.kb"]
 omit = [
     # Generated / scaffolding code that doesn't benefit from line coverage.
     "*/__pycache__/*",

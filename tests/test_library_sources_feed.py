@@ -16,10 +16,10 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
-import core.db.models  # noqa: F401  - register tables
-from api.library_feed import router as library_feed_router
-from core.db import get_session
-from core.db.models import DiscoveryFind, DiscoverySource
+import gestaltworkframe.core.db.models  # noqa: F401  - register tables
+from gestaltworkframe.api.library_feed import router as library_feed_router
+from gestaltworkframe.core.db import get_session
+from gestaltworkframe.core.db.models import DiscoveryFind, DiscoverySource
 
 
 @pytest.fixture

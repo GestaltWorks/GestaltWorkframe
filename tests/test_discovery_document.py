@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from core.db import DiscoveryFind
-from core.discovery_document import document_for_find
+from gestaltworkframe.core.db import DiscoveryFind
+from gestaltworkframe.core.discovery_document import document_for_find
 
 
 def test_document_for_find_falls_back_when_canonical_json_is_invalid():
@@ -24,7 +24,7 @@ def test_document_for_find_falls_back_when_canonical_json_is_invalid():
 
 
 def test_document_for_find_falls_back_when_canonical_json_is_too_large(monkeypatch):
-    monkeypatch.setattr("core.discovery_document.MAX_CANONICAL_DOCUMENT_JSON_BYTES", 4)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_document.MAX_CANONICAL_DOCUMENT_JSON_BYTES", 4)
     find = DiscoveryFind(
         id="find-2",
         discovery_source_id="source-1",

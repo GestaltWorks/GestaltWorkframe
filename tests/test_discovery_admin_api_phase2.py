@@ -17,15 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
-import api.admin_discovery as api_admin_discovery
-import api.main as api_main
-from core.db import DiscoveryFind, DiscoverySource
+import gestaltworkframe.api.admin_discovery as api_admin_discovery
+import gestaltworkframe.api.main as api_main
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
 
 
 def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("ADMIN_POLICY_TOKEN", "test-admin")
     api_admin_discovery._discovery_run_once_last_started_at = 0.0
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'api.db'}")
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'gestaltworkframe.api.db'}")
 
     async def init() -> sessionmaker:
         async with engine.begin() as conn:

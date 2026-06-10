@@ -1,4 +1,4 @@
-from kb.source_links import SourceLinkProfile, library_entry_url, public_source_url
+from gestaltworkframe.kb.source_links import SourceLinkProfile, library_entry_url, public_source_url
 
 
 def test_public_source_url_uses_configured_source_profile():

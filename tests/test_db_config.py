@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.db import database_url_from_env
+from gestaltworkframe.core.db import database_url_from_env
 
 
 def test_database_url_defaults_to_local_sqlite(monkeypatch):

@@ -3,8 +3,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from core.discovery_handlers import DiscoverySourceLike
-from core.discovery_handlers.youtube_channel import poll
+from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike
+from gestaltworkframe.core.discovery_handlers.youtube_channel import poll
 
 
 ATOM = """<?xml version='1.0'?><feed xmlns='http://www.w3.org/2005/Atom'><entry><id>yt:1</id><title>MSP automation video</title><link href='https://youtube.test/watch?v=1'/><published>2026-05-13T00:00:00Z</published><summary>Video summary</summary></entry></feed>"""

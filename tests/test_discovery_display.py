@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.discovery_display import (
+from gestaltworkframe.core.discovery_display import (
     display_finding_caption,
     display_finding_title,
     display_source_name,

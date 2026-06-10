@@ -13,8 +13,8 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
-import core.db.models  # noqa: F401  - register all tables on SQLModel.metadata
-from core.db.models import (
+import gestaltworkframe.core.db.models  # noqa: F401  - register all tables on SQLModel.metadata
+from gestaltworkframe.core.db.models import (
     ChatUsageRecord,
     ContactNotificationRecord,
     ContactRecord,
@@ -27,7 +27,7 @@ from core.db.models import (
     SubscriberAutoReplyRecord,
     TerminalIntakeRecord,
 )
-from core.retention import (
+from gestaltworkframe.core.retention import (
     RetentionPolicy,
     RetentionSweepSummary,
     sweep,

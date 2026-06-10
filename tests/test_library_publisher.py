@@ -8,9 +8,9 @@ import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from core.db import DiscoveryFind, DiscoverySource
-import kb.library_publisher as publisher
-from kb.library_publisher import _document_content, _github_app_jwt, _safe_target_path
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
+import gestaltworkframe.kb.library_publisher as publisher
+from gestaltworkframe.kb.library_publisher import _document_content, _github_app_jwt, _safe_target_path
 
 
 def test_safe_target_path_rejects_traversal_and_absolute_paths():

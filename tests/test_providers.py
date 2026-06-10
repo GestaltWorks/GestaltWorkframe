@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from core.model_profile import GenerationParams
-from core.providers import ClaudeProvider, LocalProvider, OllamaProvider, OpenAICompatibleProvider, _openai_tools
+from gestaltworkframe.core.model_profile import GenerationParams
+from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OllamaProvider, OpenAICompatibleProvider, _openai_tools
 
 
 def _tool():

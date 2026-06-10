@@ -1,6 +1,6 @@
-from core.orchestrator import Orchestrator
-from core.policy import AudienceSegment, ChatMode, CloudSpendPolicy, ConversationStage, OutputShape, ResponsePolicy, SearchPlan, ToneSignal, ToolExecutionMode, UserIntent, UserNeed
-from core.tool_policy import LESSON_CONCEPT_SEARCH, REFERENCE_SEARCH, WORKFLOW_PATTERN_SEARCH
+from gestaltworkframe.core.orchestrator import Orchestrator
+from gestaltworkframe.core.policy import AudienceSegment, ChatMode, CloudSpendPolicy, ConversationStage, OutputShape, ResponsePolicy, SearchPlan, ToneSignal, ToolExecutionMode, UserIntent, UserNeed
+from gestaltworkframe.core.tool_policy import LESSON_CONCEPT_SEARCH, REFERENCE_SEARCH, WORKFLOW_PATTERN_SEARCH
 
 
 def test_small_talk_stays_in_starting_mode_without_retrieval():
@@ -232,7 +232,7 @@ def test_need_to_intent_mapping_is_complete_and_lossy_in_the_expected_directions
     other will fail this test.
     """
 
-    from core.routing_frame import need_to_intent
+    from gestaltworkframe.core.routing_frame import need_to_intent
 
     expected: dict[UserNeed, UserIntent] = {
         UserNeed.SMALL_TALK: UserIntent.SMALL_TALK,

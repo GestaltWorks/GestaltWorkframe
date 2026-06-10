@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.discovery_digest import DiscoveryDigestConfig, render_discovery_digest_html, send_discovery_digest
-from core.discovery_summary import discovery_review_metadata, enrich_discovery_find, summarize_discovery_finds
+from gestaltworkframe.core.discovery_digest import DiscoveryDigestConfig, render_discovery_digest_html, send_discovery_digest
+from gestaltworkframe.core.discovery_summary import discovery_review_metadata, enrich_discovery_find, summarize_discovery_finds
 
 
 # Table-driven routing assertions. Each row is one realistic discovery
@@ -312,8 +312,8 @@ async def test_send_discovery_digest_reads_pending_finds_only(monkeypatch):
         seen["recipient"] = recipient
         return "sent"
 
-    monkeypatch.setattr("core.discovery_digest.list_recent_finds", fake_list_recent_finds)
-    monkeypatch.setattr("core.discovery_digest.send_internal_email", fake_send_internal_email)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_digest.list_recent_finds", fake_list_recent_finds)
+    monkeypatch.setattr("gestaltworkframe.core.discovery_digest.send_internal_email", fake_send_internal_email)
 
     status = await send_discovery_digest(None, config=DiscoveryDigestConfig(enabled=True, recipient="review@example.test", max_items=25))
 

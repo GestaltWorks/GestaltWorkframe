@@ -13,8 +13,8 @@ import json
 import httpx
 import pytest
 
-from core.discovery_handlers import DiscoverySourceLike
-from core.discovery_handlers.github_repo_artifact import _latest_commit_at, poll
+from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike
+from gestaltworkframe.core.discovery_handlers.github_repo_artifact import _latest_commit_at, poll
 
 
 _TREE_PAYLOAD = {

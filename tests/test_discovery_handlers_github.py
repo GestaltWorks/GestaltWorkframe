@@ -5,8 +5,8 @@ import json
 import httpx
 import pytest
 
-from core.discovery_handlers import DiscoverySourceLike
-from core.discovery_handlers.github_repo import poll
+from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike
+from gestaltworkframe.core.discovery_handlers.github_repo import poll
 
 
 _RELEASE_PAYLOAD = [

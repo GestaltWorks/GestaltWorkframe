@@ -1,5 +1,5 @@
-from core.policy import ChatMode, UserIntent
-from core.tool_policy import (
+from gestaltworkframe.core.policy import ChatMode, UserIntent
+from gestaltworkframe.core.tool_policy import (
     SERVICE_INQUIRY_CTA,
     WORKFLOW_PATTERN_SEARCH,
     allowed_tools_for_mode,

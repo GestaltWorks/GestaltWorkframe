@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from kb import ingest
-from kb.ingest import (
+from gestaltworkframe.kb import ingest
+from gestaltworkframe.kb.ingest import (
     ANTHROPIC_AI_FLUENCY_4D_SOURCE,
     API_CHEAT_SHEET_SOURCE,
     EXTERNAL_REPORT_SOURCE,
@@ -95,7 +95,7 @@ def test_directory_source_logs_ignored_decode_errors(tmp_path, caplog):
     corpus.mkdir()
     (corpus / "bad.md").write_bytes(b"valid\xfftext")
 
-    with caplog.at_level(logging.DEBUG, logger="kb.ingest"):
+    with caplog.at_level(logging.DEBUG, logger="gestaltworkframe.kb.ingest"):
         docs = load_directory_source(_source(corpus))
 
     assert docs[0].page_content == "validtext"

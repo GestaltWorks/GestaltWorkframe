@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from core.db import DiscoveryFind, DiscoverySource
-from kb.discovery_ingest import discovery_find_document, ingest_approved_find_into_chroma
+from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
+from gestaltworkframe.kb.discovery_ingest import discovery_find_document, ingest_approved_find_into_chroma
 
 
 def _find() -> DiscoveryFind:
@@ -41,7 +41,7 @@ def test_ingest_approved_find_adds_document(monkeypatch):
         def add_documents(self, docs):
             calls.extend(docs)
 
-    monkeypatch.setattr("kb.discovery_ingest.get_vectorstore", lambda: Store())
+    monkeypatch.setattr("gestaltworkframe.kb.discovery_ingest.get_vectorstore", lambda: Store())
 
     ingest_approved_find_into_chroma(_find(), _source())
 

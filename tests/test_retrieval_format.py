@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from kb import retrieval_format, source_links
-from kb.retrieval_format import NO_RELEVANT_INFO_MESSAGE, format_search_results
-from kb.source_links import SourceLinkProfile
+from gestaltworkframe.kb import retrieval_format, source_links
+from gestaltworkframe.kb.retrieval_format import NO_RELEVANT_INFO_MESSAGE, format_search_results
+from gestaltworkframe.kb.source_links import SourceLinkProfile
 
 
 def _doc(source: str, content: str, doc_type: str = ".md", source_name: str = "test"):

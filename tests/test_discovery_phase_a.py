@@ -19,15 +19,15 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 
-import core.db.models  # noqa: F401 - register tables
-from core.db.models import DiscoveryFind, DiscoverySource
-from core.discovery_handlers import FindCandidate
-from core.discovery_queue import (
+import gestaltworkframe.core.db.models  # noqa: F401 - register tables
+from gestaltworkframe.core.db.models import DiscoveryFind, DiscoverySource
+from gestaltworkframe.core.discovery_handlers import FindCandidate
+from gestaltworkframe.core.discovery_queue import (
     list_sources_with_activity,
     set_find_featured,
     set_source_featured,
 )
-from core.discovery_scheduler import _initial_status_for, _is_routine_artifact_noise
+from gestaltworkframe.core.discovery_scheduler import _initial_status_for, _is_routine_artifact_noise
 
 
 def _candidate(**overrides):
@@ -236,10 +236,10 @@ async def test_feature_toggle_404s_on_unknown_id(session_maker):
 @pytest.mark.asyncio
 async def test_auto_ingest_publishes_to_library_and_chroma_for_first_class_event(monkeypatch):
     """A release from an approved source should hit BOTH writes in one step."""
-    from core.discovery_scheduler import _auto_ingest_if_eligible
-    from kb import library_publisher as cp_module
-    from kb import discovery_ingest as di_module
-    from kb.library_publisher import LibraryPublishResult
+    from gestaltworkframe.core.discovery_scheduler import _auto_ingest_if_eligible
+    from gestaltworkframe.kb import library_publisher as cp_module
+    from gestaltworkframe.kb import discovery_ingest as di_module
+    from gestaltworkframe.kb.library_publisher import LibraryPublishResult
 
     publish_calls = []
     chroma_calls = []
@@ -282,10 +282,10 @@ async def test_auto_ingest_publishes_to_library_and_chroma_for_first_class_event
 @pytest.mark.asyncio
 async def test_auto_ingest_chroma_still_runs_when_library_unconfigured(monkeypatch):
     """If the LIBRARY publisher app creds are absent, Chroma still indexes the find."""
-    from core.discovery_scheduler import _auto_ingest_if_eligible
-    from kb import library_publisher as cp_module
-    from kb import discovery_ingest as di_module
-    from kb.library_publisher import LibraryPublisherConfigError
+    from gestaltworkframe.core.discovery_scheduler import _auto_ingest_if_eligible
+    from gestaltworkframe.kb import library_publisher as cp_module
+    from gestaltworkframe.kb import discovery_ingest as di_module
+    from gestaltworkframe.kb.library_publisher import LibraryPublisherConfigError
 
     async def unconfigured(find, source, **kwargs):
         raise LibraryPublisherConfigError("LIBRARY publisher GitHub App not configured")
@@ -320,9 +320,9 @@ async def test_auto_ingest_chroma_still_runs_when_library_unconfigured(monkeypat
 @pytest.mark.asyncio
 async def test_auto_ingest_does_not_run_for_source_activity_status(monkeypatch):
     """source_activity (artifact noise) bypasses both writes."""
-    from core.discovery_scheduler import _auto_ingest_if_eligible
-    from kb import library_publisher as cp_module
-    from kb import discovery_ingest as di_module
+    from gestaltworkframe.core.discovery_scheduler import _auto_ingest_if_eligible
+    from gestaltworkframe.kb import library_publisher as cp_module
+    from gestaltworkframe.kb import discovery_ingest as di_module
 
     called = {"publish": False, "ingest": False}
 

@@ -3,9 +3,9 @@ import json
 import pytest
 from pathlib import Path
 from unittest.mock import patch
-from core.model_profile import GenerationParams, ModelProfile, ProfileStore
-from core.provider_registry import ProviderRegistry, SecondaryProviderProfile
-from core.providers import ClaudeProvider, LocalProvider, OllamaProvider
+from gestaltworkframe.core.model_profile import GenerationParams, ModelProfile, ProfileStore
+from gestaltworkframe.core.provider_registry import ProviderRegistry, SecondaryProviderProfile
+from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OllamaProvider
 
 ROOT = Path(__file__).parents[1]
 
@@ -160,7 +160,7 @@ def test_registry_uses_profile_params_for_local(store: ProfileStore, tmp_path: P
         "LLM_PROFILES_PATH": str(profiles_path),
     }
     with patch.dict("os.environ", env, clear=False):
-        from core import model_profile
+        from gestaltworkframe.core import model_profile
         model_profile._default_store = ProfileStore(path=profiles_path)
         reg = ProviderRegistry.from_env()
 
@@ -182,7 +182,7 @@ def test_registry_uses_profile_params_for_ollama(tmp_path: Path):
         "LLM_PROFILES_PATH": str(profiles_path),
     }
     with patch.dict("os.environ", env, clear=False):
-        from core import model_profile
+        from gestaltworkframe.core import model_profile
         model_profile._default_store = ProfileStore(path=profiles_path)
         reg = ProviderRegistry.from_env()
 
@@ -203,7 +203,7 @@ def test_registry_falls_back_to_raw_env_when_no_profile(tmp_path: Path):
         "ENABLE_CLAUDE_FALLBACK": "0",
     }
     with patch.dict("os.environ", env, clear=False):
-        from core import model_profile
+        from gestaltworkframe.core import model_profile
         model_profile._default_store = ProfileStore(path=profiles_path)
         reg = ProviderRegistry.from_env()
 
@@ -221,7 +221,7 @@ def test_registry_uses_claude_profile(tmp_path: Path):
         "ANTHROPIC_API_KEY": "sk-ant-test",
     }
     with patch.dict("os.environ", env, clear=False):
-        from core import model_profile
+        from gestaltworkframe.core import model_profile
         model_profile._default_store = ProfileStore(path=profiles_path)
         reg = ProviderRegistry.from_env()
 

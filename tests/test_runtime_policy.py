@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from core.runtime import GenerationConcurrencyPolicy
+from gestaltworkframe.core.runtime import GenerationConcurrencyPolicy
 
 
 def test_generation_concurrency_defaults_match_parallelism_decision():
