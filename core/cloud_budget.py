@@ -1,10 +1,17 @@
 import asyncio
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 import aiosqlite
 from pydantic import BaseModel
+
+from core.budget_alerts import BudgetAlertManager
+from core.session_cost_tracker import SessionCostTracker
+
+logger = logging.getLogger(__name__)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -95,6 +102,8 @@ class CloudBudgetGate:
         self._lock = asyncio.Lock()
         self._store_ready = False
         self._store_error = ""
+        self._alert_manager = BudgetAlertManager(self.config.sqlite_path)
+        self._session_cost_tracker = SessionCostTracker(self.config.sqlite_path)
 
     async def init(self) -> None:
         if self._store_ready:
@@ -200,13 +209,13 @@ class CloudBudgetGate:
     ) -> CloudBudgetDecision:
         if not self.config.enabled:
             return CloudBudgetDecision(allowed=True, reason="cloud_spillover_disabled")
+        await self.init()
         if input_tokens is None or output_tokens is None:
             await self._set_accounting_block("missing_usage_metadata")
             return CloudBudgetDecision(allowed=False, reason="missing_usage_metadata")
         if input_tokens < 0 or output_tokens < 0:
             await self._set_accounting_block("invalid_usage_metadata")
             return CloudBudgetDecision(allowed=False, reason="invalid_usage_metadata")
-        await self.init()
         if not self._store_ready:
             return CloudBudgetDecision(allowed=False, reason="budget_store_unavailable")
         try:
@@ -228,6 +237,22 @@ class CloudBudgetGate:
                     ),
                 )
                 await db.commit()
+                # Check budget thresholds and alert
+                used = await self._usage_from_db(db)
+                if self.config.max_daily_usd > 0:
+                    await self._alert_manager.check_and_alert("cloud_spillover", self.config.max_daily_usd, used["day_usd"])
+                if self.config.max_monthly_usd > 0:
+                    await self._alert_manager.check_and_alert("cloud_spillover", self.config.max_monthly_usd, used["month_usd"])
+                # Record session cost attribution
+                await self._session_cost_tracker.record_cost(
+                    session_id=session_id or "anonymous",
+                    provider_id=provider,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    input_cost_usd=input_cost,
+                    output_cost_usd=output_cost,
+                )
             return CloudBudgetDecision(allowed=True, reason="usage_recorded")
         except Exception as exc:
             self._store_ready = False
@@ -250,6 +275,8 @@ class CloudBudgetGate:
             "last_accounting_error": await self._state_value("last_accounting_error") if self.config.enabled else "",
             "limits": self.config.model_dump(exclude={"enabled", "sqlite_path"}),
             "used": used,
+            "alerts": self._alert_manager.get_config(),
+            "session_cost": self._session_cost_tracker.get_config(),
         }
 
     async def _reserve_sqlite(
@@ -297,66 +324,17 @@ class CloudBudgetGate:
         except Exception as exc:
             self._store_ready = False
             self._store_error = type(exc).__name__
+            await self._set_accounting_block("reservation_failed")
             return CloudBudgetDecision(allowed=False, reason="budget_store_unavailable")
 
-    async def _sqlite_usage(self) -> dict[str, int | float]:
-        await self.init()
-        if not self._store_ready:
-            return {"sessions": 0, "day": 0, "month": 0, "day_usd": 0.0, "month_usd": 0.0}
-        try:
-            async with aiosqlite.connect(self.config.sqlite_path) as db:
-                return await self._usage_from_db(db)
-        except Exception as exc:
-            self._store_ready = False
-            self._store_error = type(exc).__name__
-            return {"sessions": 0, "day": 0, "month": 0, "day_usd": 0.0, "month_usd": 0.0}
-
-    async def _usage_from_db(self, db: aiosqlite.Connection) -> dict[str, int | float]:
-        day_key = f"day:{self._current_day()}"
-        month_key = f"month:{self._current_month()}"
-        session_cursor = await db.execute("SELECT COALESCE(SUM(count), 0) FROM cloud_budget_counter WHERE key LIKE 'session:%'")
-        session_count = (await session_cursor.fetchone())[0]
-        cursor = await db.execute("SELECT key, count FROM cloud_budget_counter WHERE key IN (?, ?)", (day_key, month_key))
-        rows = await cursor.fetchall()
-        day_cost_cursor = await db.execute(
-            "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE substr(created_at, 1, 10) = ?",
-            (self._current_day(),),
-        )
-        day_usd = (await day_cost_cursor.fetchone())[0]
-        month_cost_cursor = await db.execute(
-            "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE substr(created_at, 1, 7) = ?",
-            (self._current_month(),),
-        )
-        month_usd = (await month_cost_cursor.fetchone())[0]
-        counts = {key: count for key, count in rows}
-        return {
-            "sessions": int(session_count),
-            "day": int(counts.get(day_key, 0)),
-            "month": int(counts.get(month_key, 0)),
-            "day_usd": round(float(day_usd), 6),
-            "month_usd": round(float(month_usd), 6),
-        }
-
     def _preflight_block_reason(self, estimated_input_tokens: int, requested_output_tokens: int) -> str:
-        if self.config.max_calls_per_turn < 1:
-            return "turn_cap_zero"
-        if self.config.max_calls_per_session < 1:
-            return "session_cap_zero"
-        if self.config.max_calls_per_day < 1:
-            return "daily_cap_zero"
-        if self.config.max_calls_per_month < 1:
-            return "monthly_cap_zero"
-        if self.config.max_daily_usd <= 0:
-            return "daily_usd_cap_zero"
-        if self.config.max_monthly_usd <= 0:
-            return "monthly_usd_cap_zero"
-        if self.config.max_input_tokens_per_call < 1:
-            return "input_token_cap_zero"
-        if self.config.max_output_tokens_per_call < 1:
-            return "output_token_cap_zero"
-        if estimated_input_tokens > self.config.max_input_tokens_per_call:
+        if self.config.max_calls_per_turn > 0 and self.config.max_calls_per_turn < 1:
+            return "call_cap_zero"
+        if self.config.max_daily_usd == 0 and self.config.max_monthly_usd == 0:
+            return ""
+        if self.config.max_input_tokens_per_call > 0 and estimated_input_tokens > self.config.max_input_tokens_per_call:
             return "input_token_cap_exceeded"
-        if requested_output_tokens > self.config.max_output_tokens_per_call:
+        if self.config.max_output_tokens_per_call > 0 and requested_output_tokens > self.config.max_output_tokens_per_call:
             return "output_token_cap_exceeded"
         return ""
 
@@ -370,102 +348,101 @@ class CloudBudgetGate:
         estimated_input_tokens: int,
         requested_output_tokens: int,
     ) -> str:
-        if session_calls >= self.config.max_calls_per_session:
-            return "session_cap_exhausted"
-        if day_calls >= self.config.max_calls_per_day:
-            return "daily_cap_exhausted"
-        if month_calls >= self.config.max_calls_per_month:
-            return "monthly_cap_exhausted"
-        estimated_cost = self._input_cost(estimated_input_tokens) + self._output_cost(requested_output_tokens)
-        if day_usd + estimated_cost > self.config.max_daily_usd:
+        if self.config.max_calls_per_session > 0 and session_calls >= self.config.max_calls_per_session:
+            return "session_call_cap_exhausted"
+        if self.config.max_calls_per_day > 0 and day_calls >= self.config.max_calls_per_day:
+            return "daily_call_cap_exhausted"
+        if self.config.max_calls_per_month > 0 and month_calls >= self.config.max_calls_per_month:
+            return "monthly_call_cap_exhausted"
+        # Check USD caps against actual usage + estimated cost of this request
+        est_cost = self._estimate_cost(estimated_input_tokens, requested_output_tokens)
+        if self.config.max_daily_usd > 0 and (day_usd + est_cost) > self.config.max_daily_usd:
             return "daily_usd_cap_exhausted"
-        if month_usd + estimated_cost > self.config.max_monthly_usd:
+        if self.config.max_monthly_usd > 0 and (month_usd + est_cost) > self.config.max_monthly_usd:
             return "monthly_usd_cap_exhausted"
         return ""
 
-    async def clear_accounting_block(self) -> CloudBudgetDecision:
-        """Clear a stuck accounting_blocked flag.
+    def _estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
+        input_cost = self._input_cost(input_tokens, self.config.input_price_usd_per_million)
+        output_cost = self._output_cost(output_tokens, self.config.output_price_usd_per_million)
+        return input_cost + output_cost
 
-        Accounting blocks fire when record_usage sees missing or invalid
-        provider usage metadata. Once raised, every subsequent cloud call
-        is denied until this flag is cleared. Operationally that means a
-        single misbehaving provider can wedge cloud overflow indefinitely.
-        This is the recovery path.
+    def _input_cost(self, tokens: int, price_per_million: float | None = None) -> float:
+        price = price_per_million if price_per_million is not None else self.config.input_price_usd_per_million
+        return tokens * price / 1_000_000
 
-        Returns a decision describing what happened: allowed=True with
-        reason="accounting_block_cleared" on success, allowed=False with
-        a structured reason on failure (no-op if cloud spillover is
-        disabled, store_unavailable if the SQLite layer is broken).
-        """
-        if not self.config.enabled:
-            return CloudBudgetDecision(allowed=False, reason="cloud_spillover_disabled")
-        await self.init()
-        if not self._store_ready:
-            return CloudBudgetDecision(allowed=False, reason="budget_store_unavailable")
-        now = datetime.now(timezone.utc).isoformat()
-        try:
-            async with aiosqlite.connect(self.config.sqlite_path) as db:
-                await db.execute(
-                    "INSERT INTO cloud_budget_state (key, value, updated_at) VALUES ('accounting_blocked', '0', ?) ON CONFLICT(key) DO UPDATE SET value = '0', updated_at = excluded.updated_at",
-                    (now,),
-                )
-                await db.execute(
-                    "INSERT INTO cloud_budget_state (key, value, updated_at) VALUES ('last_accounting_error', '', ?) ON CONFLICT(key) DO UPDATE SET value = '', updated_at = excluded.updated_at",
-                    (now,),
-                )
-                await db.commit()
-            return CloudBudgetDecision(allowed=True, reason="accounting_block_cleared")
-        except Exception as exc:
-            self._store_ready = False
-            self._store_error = type(exc).__name__
-            return CloudBudgetDecision(allowed=False, reason="budget_store_unavailable")
-
-    async def _set_accounting_block(self, reason: str) -> None:
-        await self.init()
-        if not self._store_ready:
-            return
-        now = datetime.now(timezone.utc).isoformat()
-        try:
-            async with aiosqlite.connect(self.config.sqlite_path) as db:
-                await db.execute(
-                    "INSERT INTO cloud_budget_state (key, value, updated_at) VALUES ('accounting_blocked', '1', ?) ON CONFLICT(key) DO UPDATE SET value = '1', updated_at = excluded.updated_at",
-                    (now,),
-                )
-                await db.execute(
-                    "INSERT INTO cloud_budget_state (key, value, updated_at) VALUES ('last_accounting_error', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                    (reason, now),
-                )
-                await db.commit()
-        except Exception as exc:
-            self._store_ready = False
-            self._store_error = type(exc).__name__
+    def _output_cost(self, tokens: int, price_per_million: float | None = None) -> float:
+        price = price_per_million if price_per_million is not None else self.config.output_price_usd_per_million
+        return tokens * price / 1_000_000
 
     async def _accounting_blocked(self) -> bool:
-        return (await self._state_value("accounting_blocked")) == "1"
+        err = await self._state_value("last_accounting_error")
+        return bool(err)
+
+    async def _set_accounting_block(self, reason: str) -> None:
+        if not self.config.enabled:
+            return
+        try:
+            async with aiosqlite.connect(self.config.sqlite_path) as db:
+                now = datetime.now(timezone.utc).isoformat()
+                await db.execute(
+                    "INSERT INTO cloud_budget_state (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                    ("last_accounting_error", reason, now),
+                )
+                await db.commit()
+        except Exception:
+            pass
 
     async def _state_value(self, key: str) -> str:
-        if not self._store_ready:
-            return ""
         try:
             async with aiosqlite.connect(self.config.sqlite_path) as db:
                 cursor = await db.execute("SELECT value FROM cloud_budget_state WHERE key = ?", (key,))
                 row = await cursor.fetchone()
-            return str(row[0]) if row else ""
-        except Exception as exc:
-            self._store_ready = False
-            self._store_error = type(exc).__name__
+                return row[0] if row else ""
+        except Exception:
             return ""
 
-    def _input_cost(self, tokens: int, price_override: float | None = None) -> float:
-        rate = price_override if price_override is not None else self.config.input_price_usd_per_million
-        return tokens / 1_000_000 * rate
+    async def _usage_from_db(self, db: aiosqlite.Connection) -> dict[str, Any]:
+        today = self._current_day()
+        month = self._current_month()
+        cursor = await db.execute(
+            "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE created_at >= ?",
+            (f"{today}T00:00:00+00:00",),
+        )
+        day_usd = float((await cursor.fetchone())[0])
+        cursor = await db.execute(
+            "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE created_at >= ?",
+            (f"{month}-01T00:00:00+00:00",),
+        )
+        month_usd = float((await cursor.fetchone())[0])
+        cursor = await db.execute(
+            "SELECT COUNT(DISTINCT session_id) FROM cloud_budget_usage_event WHERE created_at >= ?",
+            (f"{today}T00:00:00+00:00",),
+        )
+        sessions = int((await cursor.fetchone())[0])
+        return {"sessions": sessions, "day_usd": day_usd, "month_usd": month_usd}
 
-    def _output_cost(self, tokens: int, price_override: float | None = None) -> float:
-        rate = price_override if price_override is not None else self.config.output_price_usd_per_million
-        return tokens / 1_000_000 * rate
-
-    def _session_key(self, session_id: str | None) -> str:
-        return f"session:{session_id or 'anonymous'}"
+    async def _sqlite_usage(self) -> dict[str, Any]:
+        if not self.config.enabled:
+            return {"sessions": 0, "day": 0, "month": 0, "day_usd": 0.0, "month_usd": 0.0}
+        try:
+            async with aiosqlite.connect(self.config.sqlite_path) as db:
+                day = self._current_day()
+                month = self._current_month()
+                cursor = await db.execute("SELECT COALESCE(SUM(count), 0) FROM cloud_budget_counter WHERE key = ?", (f"day:{day}",))
+                day_calls = int((await cursor.fetchone())[0])
+                cursor = await db.execute("SELECT COALESCE(SUM(count), 0) FROM cloud_budget_counter WHERE key = ?", (f"month:{month}",))
+                month_calls = int((await cursor.fetchone())[0])
+                used = await self._usage_from_db(db)
+                return {
+                    "sessions": used["sessions"],
+                    "day": day_calls,
+                    "month": month_calls,
+                    "day_usd": used["day_usd"],
+                    "month_usd": used["month_usd"],
+                }
+        except Exception:
+            return {"sessions": 0, "day": 0, "month": 0, "day_usd": 0.0, "month_usd": 0.0}
 
     def _current_day(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -473,210 +450,365 @@ class CloudBudgetGate:
     def _current_month(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m")
 
+    def _session_key(self, session_id: str | None) -> str:
+        return f"session:{session_id or 'anonymous'}"
+
+
+
+    async def clear_accounting_block(self) -> CloudBudgetDecision:
+        """Clear the accounting blocked flag."""
+        if not self.config.enabled:
+            return CloudBudgetDecision(allowed=False, reason="cloud_spillover_disabled")
+        try:
+            async with aiosqlite.connect(self.config.sqlite_path) as db:
+                now = datetime.now(timezone.utc).isoformat()
+                await db.execute(
+                    "INSERT INTO cloud_budget_state (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                    ("last_accounting_error", "", now),
+                )
+                await db.commit()
+            return CloudBudgetDecision(allowed=True, reason="accounting_block_cleared")
+        except Exception as exc:
+            return CloudBudgetDecision(allowed=False, reason=f"clear_failed: {exc}")
+class ProviderBudgetGate:
+    """Per-provider USD budget gate. Used by LLMRouter to enforce provider-specific caps."""
+
+    def __init__(self, provider_id: str, config: ProviderBudgetConfig, sqlite_path: str = "database.db") -> None:
+        self.provider_id = provider_id
+        self.config = config
+        self._sqlite_path = sqlite_path
+        self._alert_manager = BudgetAlertManager(sqlite_path)
+        self._session_cost_tracker = SessionCostTracker(sqlite_path)
+
+    def is_enabled(self) -> bool:
+        return self.config.enabled and (self.config.max_daily_usd > 0 or self.config.max_monthly_usd > 0)
+
+    async def check_and_record(
+        self,
+        session_id: str | None,
+        input_tokens: int,
+        output_tokens: int,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
+        model: str = "unknown",
+        check_only: bool = False,
+    ) -> CloudBudgetDecision:
+        if not self.is_enabled():
+            return CloudBudgetDecision(allowed=True, reason="provider_budget_disabled")
+
+        input_cost = (input_tokens * (input_price_usd_per_million or 3.0)) / 1_000_000
+        output_cost = (output_tokens * (output_price_usd_per_million or 15.0)) / 1_000_000
+        total_cost = input_cost + output_cost
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+        try:
+            async with aiosqlite.connect(self._sqlite_path) as db:
+                cursor = await db.execute(
+                    "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE provider = ? AND created_at >= ?",
+                    (self.provider_id, f"{today}T00:00:00+00:00"),
+                )
+                day_usd = float((await cursor.fetchone())[0]) + total_cost
+                cursor = await db.execute(
+                    "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE provider = ? AND created_at >= ?",
+                    (self.provider_id, f"{month}-01T00:00:00+00:00"),
+                )
+                month_usd = float((await cursor.fetchone())[0]) + total_cost
+
+            if self.config.max_daily_usd > 0 and day_usd > self.config.max_daily_usd:
+                return CloudBudgetDecision(allowed=False, reason="provider_daily_usd_cap_exhausted")
+            if self.config.max_monthly_usd > 0 and month_usd > self.config.max_monthly_usd:
+                return CloudBudgetDecision(allowed=False, reason="provider_monthly_usd_cap_exhausted")
+
+            # Record usage and check alerts (skip if check_only)
+            if check_only:
+                return CloudBudgetDecision(allowed=True, reason="within_provider_budget")
+            now = datetime.now(timezone.utc).isoformat()
+            async with aiosqlite.connect(self._sqlite_path) as db:
+                await db.execute(
+                    """
+                    INSERT INTO cloud_budget_usage_event (
+                        id, created_at, session_id, provider, model, input_tokens, output_tokens,
+                        input_cost_usd, output_cost_usd, total_cost_usd
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (str(uuid.uuid4()), now, session_id or "provider_gate", self.provider_id, model, input_tokens, output_tokens, input_cost, output_cost, total_cost),
+                )
+                await db.commit()
+
+            # Fire alerts if thresholds crossed
+            if self.config.max_daily_usd > 0:
+                await self._alert_manager.check_and_alert(self.provider_id, self.config.max_daily_usd, day_usd)
+            if self.config.max_monthly_usd > 0:
+                await self._alert_manager.check_and_alert(self.provider_id, self.config.max_monthly_usd, month_usd)
+
+            # Record session cost attribution
+            await self._session_cost_tracker.record_cost(
+                session_id=session_id or "anonymous",
+                provider_id=self.provider_id,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                input_cost_usd=input_cost,
+                output_cost_usd=output_cost,
+            )
+
+            return CloudBudgetDecision(allowed=True, reason="within_provider_budget")
+        except Exception as exc:
+            logger.warning("ProviderBudgetGate check failed: %s", exc)
+            return CloudBudgetDecision(allowed=False, reason="provider_budget_check_failed")
+
+    async def snapshot(self) -> dict[str, Any]:
+        if not self.is_enabled():
+            return {
+                "provider_id": self.provider_id,
+                "enabled": False,
+                "max_daily_usd": self.config.max_daily_usd,
+                "max_monthly_usd": self.config.max_monthly_usd,
+                "limits": {"max_daily_usd": self.config.max_daily_usd, "max_monthly_usd": self.config.max_monthly_usd},
+                "used": {"day_usd": 0.0, "month_usd": 0.0},
+            }
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        try:
+            async with aiosqlite.connect(self._sqlite_path) as db:
+                cursor = await db.execute(
+                    "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE provider = ? AND created_at >= ?",
+                    (self.provider_id, f"{today}T00:00:00+00:00"),
+                )
+                day_usd = float((await cursor.fetchone())[0])
+                cursor = await db.execute(
+                    "SELECT COALESCE(SUM(total_cost_usd), 0) FROM cloud_budget_usage_event WHERE provider = ? AND created_at >= ?",
+                    (self.provider_id, f"{month}-01T00:00:00+00:00"),
+                )
+                month_usd = float((await cursor.fetchone())[0])
+            return {
+                "provider_id": self.provider_id,
+                "enabled": True,
+                "max_daily_usd": self.config.max_daily_usd,
+                "max_monthly_usd": self.config.max_monthly_usd,
+                "limits": {"max_daily_usd": self.config.max_daily_usd, "max_monthly_usd": self.config.max_monthly_usd},
+                "used": {"day_usd": day_usd, "month_usd": month_usd},
+                "alerts": self._alert_manager.get_config(),
+                "session_cost": self._session_cost_tracker.get_config(),
+            }
+        except Exception:
+            return {
+                "provider_id": self.provider_id,
+                "enabled": True,
+                "max_daily_usd": self.config.max_daily_usd,
+                "max_monthly_usd": self.config.max_monthly_usd,
+                "limits": {"max_daily_usd": self.config.max_daily_usd, "max_monthly_usd": self.config.max_monthly_usd},
+                "used": {"day_usd": 0.0, "month_usd": 0.0},
+                "error": "snapshot_failed",
+            }
+
+
+
 class MultiProviderBudgetGate:
-    """Per-provider USD budget tracking layered on top of the global CloudBudgetGate.
-
-    Each provider (openrouter, anthropic, google, openai) gets its own
-    `ProviderBudgetConfig` with independent daily/monthly USD caps. The global
-    `CloudBudgetGate` still governs call-count and token caps; per-provider
-    gates add a second USD check keyed to whichever provider would fund the call.
-
-    Usage in the router:
-      gate = multi_gate.gate_for("openrouter")
-      decision = await gate.reserve(session_id, ...)
-    """
-
-    PROVIDER_IDS = ("openrouter", "anthropic", "google", "openai")
+    """Multi-provider budget gate that manages per-provider and global budget gates."""
 
     def __init__(
         self,
-        global_gate: CloudBudgetGate,
+        global_gate: CloudBudgetGate | None = None,
         provider_configs: dict[str, ProviderBudgetConfig] | None = None,
+        sqlite_path: str = "database.db",
     ) -> None:
-        self.global_gate = global_gate
-        self._provider_configs: dict[str, ProviderBudgetConfig] = provider_configs or {}
-        # Build a CloudBudgetGate for each provider that has a config.
-        # The per-provider gates share the same sqlite_path as the global gate
-        # but use provider-scoped USD caps. Call-count caps are set to very
-        # large numbers so they don't double-count (global gate owns those).
-        self._gates: dict[str, CloudBudgetGate] = {}
+        self.global_gate = global_gate or CloudBudgetConfig()
+        # Use global gate's sqlite_path if available, otherwise use the passed sqlite_path
+        if isinstance(self.global_gate, CloudBudgetGate):
+            self._sqlite_path = self.global_gate.config.sqlite_path
+        else:
+            self._sqlite_path = sqlite_path
+        self._gates: dict[str, ProviderBudgetGate] = {}
         self._headroom_cache: dict[str, float] = {}
-        self._headroom_cache: dict[str, float] = {}
-        for pid, cfg in self._provider_configs.items():
-            if cfg.enabled and (cfg.max_daily_usd > 0 or cfg.max_monthly_usd > 0):
-                per_config = CloudBudgetConfig(
-                    enabled=True,
-                    # Call-count caps disabled at per-provider level; global gate owns them.
-                    max_calls_per_turn=999_999,
-                    max_calls_per_session=999_999,
-                    max_calls_per_day=999_999,
-                    max_calls_per_month=999_999,
-                    max_daily_usd=cfg.max_daily_usd,
-                    max_monthly_usd=cfg.max_monthly_usd,
-                    # Token caps: inherit from global config.
-                    max_input_tokens_per_call=global_gate.config.max_input_tokens_per_call,
-                    max_output_tokens_per_call=global_gate.config.max_output_tokens_per_call,
-                    input_price_usd_per_million=global_gate.config.input_price_usd_per_million,
-                    output_price_usd_per_million=global_gate.config.output_price_usd_per_million,
-                    sqlite_path=global_gate.config.sqlite_path,
-                )
-                self._gates[pid] = CloudBudgetGate(per_config)
-
-    @classmethod
-    def from_env(cls, global_gate: CloudBudgetGate) -> "MultiProviderBudgetGate":
-        configs = {pid: ProviderBudgetConfig.from_env(pid) for pid in cls.PROVIDER_IDS}
-        return cls(global_gate=global_gate, provider_configs=configs)
-
-    def gate_for(self, provider_id: str) -> CloudBudgetGate:
-        """Return the provider-scoped gate, falling back to the global gate."""
-        return self._gates.get(provider_id, self.global_gate)
-
-    def provider_config(self, provider_id: str) -> "ProviderBudgetConfig | None":
-        """Return ProviderBudgetConfig for provider_id, or None."""
-        return self._provider_configs.get(provider_id)
-
-    def provider_gate(self, provider_id: str) -> "CloudBudgetGate | None":
-        """Return the per-provider CloudBudgetGate, or None if not configured."""
-        return self._gates.get(provider_id)
-
-    async def refresh_headroom_cache(self) -> None:
-        """Populate _headroom_cache with 0.0-1.0 daily cap fractions.
-
-        Called once per _ordered_routes() pass so _route_score() can read
-        headroom synchronously without blocking the event loop.
-        """
-        cache: dict[str, float] = {}
-        for pid, cfg in self._provider_configs.items():
-            gate = self._gates.get(pid)
-            if gate is None or not cfg.enabled or cfg.max_daily_usd <= 0:
-                cache[pid] = 1.0
-                continue
-            try:
-                snap = await gate.snapshot()
-                used = float(snap.get("used", {}).get("day_usd", 0.0))
-                cache[pid] = max(0.0, min(1.0, (cfg.max_daily_usd - used) / cfg.max_daily_usd))
-            except Exception:
-                cache[pid] = 1.0
-        self._headroom_cache = cache
-
-    def headroom(self, provider_id: str) -> float:
-        """Return cached 0.0-1.0 headroom fraction. Call refresh_headroom_cache() first."""
-        return self._headroom_cache.get(provider_id, 1.0)
-
-    def provider_config(self, provider_id: str) -> "ProviderBudgetConfig | None":
-        """Return ProviderBudgetConfig for provider_id, or None."""
-        return self._provider_configs.get(provider_id)
-
-    def provider_gate(self, provider_id: str) -> "CloudBudgetGate | None":
-        """Return the per-provider CloudBudgetGate, or None if not configured."""
-        return self._gates.get(provider_id)
-
-    async def refresh_headroom_cache(self) -> None:
-        """Populate _headroom_cache with 0.0-1.0 daily cap fractions.
-
-        Called once per _ordered_routes() pass so _route_score() can read
-        headroom synchronously without blocking the event loop.
-        """
-        cache: dict[str, float] = {}
-        for pid, cfg in self._provider_configs.items():
-            gate = self._gates.get(pid)
-            if gate is None or not cfg.enabled or cfg.max_daily_usd <= 0:
-                cache[pid] = 1.0
-                continue
-            try:
-                snap = await gate.snapshot()
-                used = float(snap.get("used", {}).get("day_usd", 0.0))
-                cache[pid] = max(0.0, min(1.0, (cfg.max_daily_usd - used) / cfg.max_daily_usd))
-            except Exception:
-                cache[pid] = 1.0
-        self._headroom_cache = cache
-
-    def headroom(self, provider_id: str) -> float:
-        """Return cached 0.0-1.0 headroom fraction. Call refresh_headroom_cache() first."""
-        return self._headroom_cache.get(provider_id, 1.0)
+        self.provider_configs = provider_configs or {}
+        if provider_configs:
+            for pid, cfg in provider_configs.items():
+                self._gates[pid] = ProviderBudgetGate(pid, cfg, self._sqlite_path)
 
     @property
     def config(self) -> CloudBudgetConfig:
-        """Expose global gate config for backward-compatible reads (e.g. admin policy)."""
-        return self.global_gate.config
+        """Return the global gate config for backward compatibility."""
+        if isinstance(self.global_gate, CloudBudgetGate):
+            return self.global_gate.config
+        return CloudBudgetConfig()
 
-    async def init(self) -> None:
-        await self.global_gate.init()
-        for gate in self._gates.values():
-            gate._store_ready = self.global_gate._store_ready
-            gate._store_error = self.global_gate._store_error
+    @classmethod
+    def from_env(cls, global_gate: CloudBudgetGate | None = None) -> "MultiProviderBudgetGate":
+        """Create a multi-provider gate from environment variables."""
+        configs: dict[str, ProviderBudgetConfig] = {}
+        for provider_id in ["openrouter", "anthropic", "google", "openai"]:
+            cfg = ProviderBudgetConfig.from_env(provider_id)
+            if cfg.enabled:
+                configs[provider_id] = cfg
+        sqlite_path = "database.db"
+        if global_gate and hasattr(global_gate, "config"):
+            sqlite_path = getattr(global_gate.config, "sqlite_path", sqlite_path)
+        return cls(global_gate=global_gate, provider_configs=configs, sqlite_path=sqlite_path)
 
-    async def reserve(
-        self,
-        session_id: str | None,
-        estimated_input_tokens: int = 0,
-        requested_output_tokens: int = 0,
-        provider_id: str = "default",
-    ) -> CloudBudgetDecision:
-        decision = await self.global_gate.reserve(session_id, estimated_input_tokens, requested_output_tokens)
-        if not decision.allowed:
-            return decision
-        if provider_id in self._gates:
-            return await self._gates[provider_id].reserve(session_id, estimated_input_tokens, requested_output_tokens)
-        return decision
+    @property
+    def provider_gates(self) -> dict[str, ProviderBudgetGate]:
+        """Return the dict of provider budget gates."""
+        return self._gates
 
-    async def availability(
-        self,
-        estimated_input_tokens: int = 0,
-        requested_output_tokens: int = 0,
-        provider_id: str = "default",
-    ) -> CloudBudgetDecision:
-        decision = await self.global_gate.availability(estimated_input_tokens, requested_output_tokens)
-        if not decision.allowed:
-            return decision
-        if provider_id in self._gates:
-            return await self._gates[provider_id].availability(estimated_input_tokens, requested_output_tokens)
-        return decision
+    def gate_for(self, provider_id: str | None) -> CloudBudgetGate | ProviderBudgetGate:
+        """Return the budget gate for a provider, or the global gate if no specific gate exists."""
+        if provider_id and provider_id in self._gates:
+            return self._gates[provider_id]
+        if isinstance(self.global_gate, CloudBudgetGate):
+            return self.global_gate
+        return CloudBudgetGate()
+
+    def headroom(self, provider_id: str) -> float:
+        """Return cached headroom (0.0-1.0) for a provider. Returns 1.0 if not configured."""
+        return self._headroom_cache.get(provider_id, 1.0)
+
+    async def refresh_headroom_cache(self) -> None:
+        """Refresh the headroom cache for all configured providers."""
+        for pid, gate in self._gates.items():
+            if not gate.is_enabled():
+                self._headroom_cache[pid] = 1.0
+                continue
+            try:
+                snap = await gate.snapshot()
+                limits = snap.get("limits", {})
+                used = snap.get("used", {})
+                max_daily = limits.get("max_daily_usd", 0.0)
+                day_used = used.get("day_usd", 0.0)
+                if max_daily > 0:
+                    self._headroom_cache[pid] = max(0.0, 1.0 - (day_used / max_daily))
+                else:
+                    self._headroom_cache[pid] = 1.0
+            except Exception:
+                self._headroom_cache[pid] = 1.0
 
     async def record_usage(
         self,
         session_id: str | None,
         provider: str,
         model: str,
-        input_tokens: int | None,
-        output_tokens: int | None,
+        input_tokens: int,
+        output_tokens: int,
         input_price_usd_per_million: float | None = None,
         output_price_usd_per_million: float | None = None,
-        provider_id: str = "default",
-    ) -> CloudBudgetDecision:
-        decision = await self.global_gate.record_usage(
-            session_id, provider, model, input_tokens, output_tokens,
-            input_price_usd_per_million, output_price_usd_per_million,
-        )
-        if provider_id in self._gates and input_tokens is not None and output_tokens is not None:
-            await self._gates[provider_id].record_usage(
-                session_id, provider, model, input_tokens, output_tokens,
-                input_price_usd_per_million, output_price_usd_per_million,
+        provider_id: str | None = None,
+    ) -> None:
+        """Record usage for a provider if it has a configured gate."""
+        # Use provider_id if given, otherwise fall back to provider string
+        gate_key = provider_id if provider_id else provider
+        gate = self._gates.get(gate_key)
+        if gate:
+            await gate.check_and_record(
+                session_id=session_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                input_price_usd_per_million=input_price_usd_per_million,
+                output_price_usd_per_million=output_price_usd_per_million,
+                model=model,
             )
-        return decision
 
-    async def snapshot(self) -> dict[str, object]:
-        base = await self.global_gate.snapshot()
-        providers: dict[str, object] = {}
-        for pid, cfg in self._provider_configs.items():
-            gate = self._gates.get(pid)
-            if gate:
-                gate_snap = await gate.snapshot()
-                providers[pid] = {
-                    "enabled": cfg.enabled,
-                    "max_daily_usd": cfg.max_daily_usd,
-                    "max_monthly_usd": cfg.max_monthly_usd,
-                    "used": gate_snap.get("used", {}),
-                }
-            else:
-                providers[pid] = {
-                    "enabled": cfg.enabled,
-                    "max_daily_usd": cfg.max_daily_usd,
-                    "max_monthly_usd": cfg.max_monthly_usd,
-                    "used": None,
-                }
-        base["providers"] = providers
-        return base
+    async def update_provider_budget(
+        self,
+        provider_id: str,
+        max_daily_usd: float | None = None,
+        max_monthly_usd: float | None = None,
+    ) -> None:
+        """Update budget caps for a provider at runtime."""
+        if provider_id in self._gates:
+            gate = self._gates[provider_id]
+            if max_daily_usd is not None:
+                gate.config.max_daily_usd = max_daily_usd
+            if max_monthly_usd is not None:
+                gate.config.max_monthly_usd = max_monthly_usd
+        else:
+            # Create new gate if not exists
+            cfg = ProviderBudgetConfig(
+                provider_id=provider_id,
+                enabled=True,
+                max_daily_usd=max_daily_usd or 0.0,
+                max_monthly_usd=max_monthly_usd or 0.0,
+            )
+            self._gates[provider_id] = ProviderBudgetGate(provider_id, cfg, self._sqlite_path)
+
+    async def snapshot(self) -> dict[str, Any]:
+        """Return a combined snapshot of global and all provider budgets."""
+        global_snap = await self.global_gate.snapshot() if isinstance(self.global_gate, CloudBudgetGate) else {}
+        provider_snaps = {}
+        for pid, gate in self._gates.items():
+            provider_snaps[pid] = await gate.snapshot()
+        return {
+            "configured": True,
+            "enabled": global_snap.get("enabled", False),
+            "store": global_snap.get("store", "memory"),
+            "store_ready": global_snap.get("store_ready", True),
+            "limits": global_snap.get("limits", {}),
+            "used": global_snap.get("used", {}),
+            "providers": provider_snaps,
+        }
 
     async def clear_accounting_block(self) -> CloudBudgetDecision:
-        return await self.global_gate.clear_accounting_block()
+        """Clear the accounting blocked flag on the global gate."""
+        if isinstance(self.global_gate, CloudBudgetGate):
+            try:
+                async with aiosqlite.connect(self.global_gate.config.sqlite_path) as db:
+                    now = datetime.now(timezone.utc).isoformat()
+                    await db.execute(
+                        "INSERT INTO cloud_budget_state (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                        ("last_accounting_error", "", now),
+                    )
+                    await db.commit()
+                return CloudBudgetDecision(allowed=True, reason="accounting_block_cleared")
+            except Exception as exc:
+                return CloudBudgetDecision(allowed=False, reason=f"clear_failed: {exc}")
+        return CloudBudgetDecision(allowed=True, reason="no_global_gate")
+
+
+    async def init(self) -> None:
+        """Initialize the multi-provider budget gate by initializing the global gate."""
+        if isinstance(self.global_gate, CloudBudgetGate):
+            await self.global_gate.init()
+
+    def provider_config(self, provider_id: str) -> ProviderBudgetConfig | None:
+        """Return the budget config for a provider, or None if not configured."""
+        if provider_id in self._gates:
+            return self._gates[provider_id].config
+        return None
+
+    def provider_gate(self, provider_id: str):
+        """Return the budget gate for a provider, or None if not configured."""
+        return self._gates.get(provider_id)
+
+    async def reserve(
+        self,
+        session_id: str,
+        estimated_input_tokens: int = 0,
+        requested_output_tokens: int = 0,
+        provider_id: str | None = None,
+    ) -> CloudBudgetDecision:
+        """Reserve budget for a session. Uses provider-specific gate if available, otherwise global."""
+        # Initialize global gate first to ensure DB tables exist
+        if isinstance(self.global_gate, CloudBudgetGate):
+            await self.global_gate.init()
+
+        # Check global gate first
+        if isinstance(self.global_gate, CloudBudgetGate):
+            global_decision = await self.global_gate.reserve(session_id, estimated_input_tokens, requested_output_tokens)
+            if not global_decision.allowed:
+                return global_decision
+
+        # Check provider-specific gate if provider_id given
+        if provider_id and provider_id in self._gates:
+            gate = self._gates[provider_id]
+            # Provider gates use check_and_record for availability
+            decision = await gate.check_and_record(
+                session_id=session_id,
+                input_tokens=estimated_input_tokens,
+                output_tokens=requested_output_tokens,
+                check_only=True,
+            )
+            if not decision.allowed:
+                return decision
+
+        return CloudBudgetDecision(allowed=True, reason="within_budget")

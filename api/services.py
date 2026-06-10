@@ -134,8 +134,12 @@ class AppServices:
 
 
 async def build_app_services() -> AppServices:
+    # key_store already created above
+    await key_store.init()
     registry = ProviderRegistry.from_env()
-    routes = registry.build_routes()
+    registry.key_store = key_store
+    registry.admin_token = os.getenv("ADMIN_TOKEN", "")
+    routes = await registry.build_routes()
     local_provider = next((route.provider for route in routes if route.provider and not route.is_cloud), None)
     if local_provider is None:
         local_provider = registry.build_primary()
@@ -144,8 +148,7 @@ async def build_app_services() -> AppServices:
     cloud_budget = MultiProviderBudgetGate.from_env(_global_gate)
     _or_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     balance_checker = OpenRouterBalanceChecker(_or_key) if _or_key else None
-    _db_path = os.getenv("CLOUD_SPILLOVER_DB_PATH", os.getenv("APP_DATABASE_PATH", "database.db")).strip() or "database.db"
-    key_store = ApiKeyStore(_db_path)
+    # key_store already created above
     runtime_manager = RuntimeManager(RuntimeControlPolicy.from_env())
     llm_router = LLMRouter(
         primary=local_provider,

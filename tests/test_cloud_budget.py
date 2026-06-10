@@ -49,7 +49,7 @@ async def test_budget_gate_availability_checks_caps_without_incrementing(tmp_pat
     assert available.reason == "within_budget"
     assert first.allowed is True
     assert after.allowed is False
-    assert after.reason == "daily_cap_exhausted"
+    assert after.reason == "daily_call_cap_exhausted"
 
 
 @pytest.mark.asyncio
@@ -61,7 +61,7 @@ async def test_budget_gate_enforces_session_cap(tmp_path):
 
     assert first.allowed is True
     assert second.allowed is False
-    assert second.reason == "session_cap_exhausted"
+    assert second.reason == "session_call_cap_exhausted"
 
 
 @pytest.mark.asyncio
@@ -73,7 +73,7 @@ async def test_budget_gate_enforces_daily_cap_across_sessions(tmp_path):
 
     assert first.allowed is True
     assert second.allowed is False
-    assert second.reason == "daily_cap_exhausted"
+    assert second.reason == "daily_call_cap_exhausted"
 
 
 @pytest.mark.asyncio
@@ -178,7 +178,7 @@ async def test_enabled_budget_gate_persists_counts_across_instances(tmp_path):
 
     assert first.allowed is True
     assert second.allowed is False
-    assert second.reason == "session_cap_exhausted"
+    assert second.reason == "session_call_cap_exhausted"
 
 
 @pytest.mark.asyncio
@@ -372,7 +372,7 @@ async def test_multi_gate_global_cap_blocks_all_providers(tmp_path):
     await mg.reserve("s3", provider_id="google")
     decision = await mg.reserve("s4", provider_id="openrouter")
     assert decision.allowed is False
-    assert decision.reason == "daily_cap_exhausted"
+    assert decision.reason == "daily_call_cap_exhausted"
 
 
 @pytest.mark.asyncio

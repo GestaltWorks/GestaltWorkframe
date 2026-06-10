@@ -1,6 +1,6 @@
 import os
 from urllib.parse import urlparse, urlunparse
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 from core.model_profile import GenerationParams, ModelProfile, ProfileStore, get_default_store
 from core.providers import ClaudeProvider, LocalProvider, LLMProvider, OllamaProvider, OpenAICompatibleProvider
@@ -89,10 +89,30 @@ class ProviderRegistry:
         primary: LocalProviderProfile | None = None,
         secondary: SecondaryProviderProfile | None = None,
         store: ProfileStore | None = None,
+        key_store: Any | None = None,
+        admin_token: str = "",
     ) -> None:
         self.primary_profile = primary or LocalProviderProfile()
         self.secondary_profile = secondary or SecondaryProviderProfile()
         self.store = store or get_default_store()
+        self.key_store = key_store
+        self.admin_token = admin_token
+
+    def _get_api_key(self, provider_id: str, env_var: str) -> str:
+        """Get API key from env var or key store."""
+        # First check environment variable
+        key = _env_text(env_var)
+        if key:
+            return key
+        # Then check key store if available
+        if self.key_store and self.admin_token:
+            try:
+                stored_key = self.key_store.get_key_sync(provider_id, self.admin_token)
+                if stored_key:
+                    return stored_key
+            except Exception:
+                pass
+        return ""
 
     @classmethod
     def from_env(cls) -> "ProviderRegistry":
@@ -223,7 +243,7 @@ class ProviderRegistry:
         return self._route_from_model_profile(profile, provider, configured=True)
 
     def _route_from_claude_profile(self, profile: ModelProfile) -> ProviderRoute:
-        api_key = _env_text("ANTHROPIC_API_KEY")
+        api_key = self._get_api_key("anthropic", "ANTHROPIC_API_KEY")
         if not api_key:
             return self._route_from_model_profile(profile, None, configured=False, blocked_reason="missing_api_key")
         provider = ClaudeProvider(api_key=api_key, model=profile.model, params=profile.params)
@@ -231,7 +251,16 @@ class ProviderRegistry:
         return self._route_from_model_profile(profile, provider, configured=True)
 
     def _route_from_openai_compatible_profile(self, profile: ModelProfile) -> ProviderRoute:
-        api_key = _env_text(profile.api_key_env) if profile.api_key_env else ""
+        # Map provider name to key store ID
+        provider_key_id = profile.provider_id if hasattr(profile, 'provider_id') else "openai"
+        if profile.api_key_env and "ANTHROPIC" in profile.api_key_env:
+            provider_key_id = "anthropic"
+        elif profile.api_key_env and "GOOGLE" in profile.api_key_env:
+            provider_key_id = "google"
+        elif profile.api_key_env and "OPENAI" in profile.api_key_env:
+            provider_key_id = "openai"
+
+        api_key = self._get_api_key(provider_key_id, profile.api_key_env) if profile.api_key_env else ""
         base_url = _env_text(profile.base_url_env, profile.base_url) if profile.base_url_env else profile.base_url
         model = _env_text(profile.model_env, profile.model) if profile.model_env else profile.model
         if not api_key:
