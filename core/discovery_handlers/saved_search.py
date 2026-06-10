@@ -28,7 +28,7 @@ def _candidate(query: str, item: dict[str, Any]) -> FindCandidate:
 
 
 async def poll(source: DiscoverySourceLike, http: httpx.AsyncClient) -> PollResult:
-    token = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
+    token = source.auth_token or os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
     if not token:
         return PollResult(finds=[], status="error", error="BRAVE_SEARCH_API_KEY is not configured")
     query = source.target.strip()

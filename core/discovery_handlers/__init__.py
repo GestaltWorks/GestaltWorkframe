@@ -59,6 +59,7 @@ class DiscoverySourceLike:
     target: str
     etag: str = ""
     last_modified: str = ""
+    auth_token: str = ""
 
 
 # Registered after handler modules are imported below.

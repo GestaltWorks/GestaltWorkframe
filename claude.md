@@ -29,6 +29,16 @@ A FastAPI backend plus a Next.js frontend:
   `kb/watchlist*`, and the publisher module: deterministic source polling,
   admin review, SSRF-guarded targets, corpus publishing, latest feed, optional
   scout/digest, canonical `Document` projections, and no secret storage.
+- `core/key_store.py` is an AES-256-GCM encrypted SQLite key store for
+  runtime API key management (openrouter, anthropic, google, openai, github,
+  brave). Admin endpoints: POST/DELETE/GET/test under
+  `/admin/api/provider-keys`. Storing a new key immediately rotates live
+  provider instances via `LLMRouter.rotate_provider_key()`. Discovery
+  handlers receive their auth token via `DiscoverySourceLike.auth_token`
+  (resolved from key store by the scheduler; env var fallback preserved).
+- `core/provider_balance.py` fetches live credit balance from OpenRouter
+  (`GET /api/v1/auth/key`, 5-min cache) and estimates local tracking balance
+  for other providers. Balance data appears in the admin health panel only.
 - `packages/gestalt-connector-protocol/` defines the canonical `Document`
   model, connector protocol, redaction pipeline, generated schema contract,
   and connector-test harness. `packages/gestalt-connector-fs/` is the

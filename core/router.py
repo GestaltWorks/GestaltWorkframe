@@ -171,6 +171,25 @@ class LLMRouter:
             closed.add(id(provider))
             await provider.close()
 
+    async def rotate_provider_key(self, provider_budget_id: str, new_key: str) -> int:
+        """Push a new API key to all live routes matching provider_budget_id.
+
+        Calls update_api_key(new_key) on each provider that supports it.
+        Returns the count of providers updated.
+        """
+        updated: set[int] = set()
+        for route in self.routes:
+            if route.provider_budget_id != provider_budget_id:
+                continue
+            provider = route.provider
+            if provider is None or id(provider) in updated:
+                continue
+            if not hasattr(provider, "update_api_key"):
+                continue
+            await provider.update_api_key(new_key)
+            updated.add(id(provider))
+        return len(updated)
+
     def has_tool_capable_route(
         self,
         *,

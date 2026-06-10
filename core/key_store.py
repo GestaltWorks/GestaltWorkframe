@@ -53,6 +53,8 @@ _PROVIDER_ENV_VARS: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "google": "GEMINI_CLOUD_API_KEY",
     "openai": "OPENAI_API_KEY",
+    "github": "APP_GITHUB_TOKEN",
+    "brave": "BRAVE_SEARCH_API_KEY",
 }
 
 

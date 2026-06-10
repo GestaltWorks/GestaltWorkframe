@@ -322,3 +322,247 @@ def test_set_provider_key_never_returns_key_value(tmp_path, monkeypatch):
     assert "key" not in body, "Response must not have a top-level 'key' field"
     # Nested test result must also not contain the key
     assert secret not in str(body.get("test", {}))
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: live key validation tests (mocked HTTP)
+# ---------------------------------------------------------------------------
+
+def test_test_provider_key_anthropic_valid(tmp_path, monkeypatch):
+    """Anthropic key test hits /v1/models and returns valid=True on 200."""
+    client = _make_client(tmp_path, monkeypatch)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_cls.return_value = mock_http
+
+        with client:
+            # Store a key first so /test has something to test
+            client.post(
+                "/admin/api/provider-keys/anthropic",
+                json={"key": "sk-ant-valid"},
+                headers={"x-admin-token": "test-admin"},
+            )
+            resp = client.post(
+                "/admin/api/provider-keys/anthropic/test",
+                headers={"x-admin-token": "test-admin"},
+            )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["error"] == ""
+
+
+def test_test_provider_key_anthropic_invalid(tmp_path, monkeypatch):
+    """Anthropic key test returns valid=False on 401."""
+    client = _make_client(tmp_path, monkeypatch)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_cls.return_value = mock_http
+
+        with client:
+            client.post(
+                "/admin/api/provider-keys/anthropic",
+                json={"key": "sk-ant-bad"},
+                headers={"x-admin-token": "test-admin"},
+            )
+            resp = client.post(
+                "/admin/api/provider-keys/anthropic/test",
+                headers={"x-admin-token": "test-admin"},
+            )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert body["error"] == "invalid_api_key"
+
+
+def test_test_provider_key_google_valid(tmp_path, monkeypatch):
+    """Google key test returns valid=True on 200 from Gemini models endpoint."""
+    client = _make_client(tmp_path, monkeypatch)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_cls.return_value = mock_http
+
+        with client:
+            client.post(
+                "/admin/api/provider-keys/google",
+                json={"key": "AIza-valid"},
+                headers={"x-admin-token": "test-admin"},
+            )
+            resp = client.post(
+                "/admin/api/provider-keys/google/test",
+                headers={"x-admin-token": "test-admin"},
+            )
+    assert resp.status_code == 200
+    assert resp.json()["valid"] is True
+
+
+def test_test_provider_key_openai_invalid(tmp_path, monkeypatch):
+    """OpenAI key test returns valid=False on 401."""
+    client = _make_client(tmp_path, monkeypatch)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_cls.return_value = mock_http
+
+        with client:
+            client.post(
+                "/admin/api/provider-keys/openai",
+                json={"key": "sk-bad"},
+                headers={"x-admin-token": "test-admin"},
+            )
+            resp = client.post(
+                "/admin/api/provider-keys/openai/test",
+                headers={"x-admin-token": "test-admin"},
+            )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert body["error"] == "invalid_api_key"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: key rotation propagation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_rotate_provider_key_updates_openai_compatible(tmp_path):
+    """rotate_provider_key() calls update_api_key on matching provider instances."""
+    from unittest.mock import AsyncMock
+    from core.key_store import ApiKeyStore
+    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    from core.router import LLMRouter, ProviderRoute
+
+    provider = AsyncMock()
+    provider.update_api_key = AsyncMock()
+
+    route = ProviderRoute(
+        name="openrouter-test",
+        provider=provider,
+        provider_type="OpenAICompatibleProvider",
+        model="some-model",
+        role="primary",
+        cost_tier="low_cost",
+        allowed_response_policies=["default"],
+        provider_budget_id="openrouter",
+    )
+    gate = CloudBudgetGate(CloudBudgetConfig(enabled=False, sqlite_path=":memory:"))
+    multi = MultiProviderBudgetGate(gate)
+    router = LLMRouter(primary=provider, routes=[route], cloud_budget=multi)
+
+    count = await router.rotate_provider_key("openrouter", "new-key-xyz")
+    assert count == 1
+    provider.update_api_key.assert_awaited_once_with("new-key-xyz")
+
+
+@pytest.mark.asyncio
+async def test_rotate_provider_key_skips_wrong_budget_id(tmp_path):
+    """rotate_provider_key() only touches routes with the matching provider_budget_id."""
+    from unittest.mock import AsyncMock
+    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    from core.router import LLMRouter, ProviderRoute
+
+    provider_or = AsyncMock()
+    provider_or.update_api_key = AsyncMock()
+    provider_an = AsyncMock()
+    provider_an.update_api_key = AsyncMock()
+
+    route_or = ProviderRoute(
+        name="openrouter-route",
+        provider=provider_or,
+        provider_type="OpenAICompatibleProvider",
+        model="x",
+        role="primary",
+        cost_tier="low_cost",
+        allowed_response_policies=["default"],
+        provider_budget_id="openrouter",
+    )
+    route_an = ProviderRoute(
+        name="claude-route",
+        provider=provider_an,
+        provider_type="ClaudeProvider",
+        model="y",
+        role="primary",
+        cost_tier="premium",
+        allowed_response_policies=["default"],
+        provider_budget_id="anthropic",
+    )
+
+    from core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate
+    gate = CloudBudgetGate(CloudBudgetConfig(enabled=False, sqlite_path=":memory:"))
+    multi = MultiProviderBudgetGate(gate)
+    router = LLMRouter(primary=provider_or, routes=[route_or, route_an], cloud_budget=multi)
+
+    count = await router.rotate_provider_key("anthropic", "new-an-key")
+    assert count == 1
+    provider_an.update_api_key.assert_awaited_once_with("new-an-key")
+    provider_or.update_api_key.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: github + brave in key store provider map
+# ---------------------------------------------------------------------------
+
+def test_key_store_has_github_and_brave_providers():
+    """key_store._PROVIDER_ENV_VARS includes github and brave."""
+    from core.key_store import _PROVIDER_ENV_VARS
+    assert "github" in _PROVIDER_ENV_VARS
+    assert _PROVIDER_ENV_VARS["github"] == "APP_GITHUB_TOKEN"
+    assert "brave" in _PROVIDER_ENV_VARS
+    assert _PROVIDER_ENV_VARS["brave"] == "BRAVE_SEARCH_API_KEY"
+
+
+@pytest.mark.asyncio
+async def test_set_and_get_github_key(store):
+    """github provider_id can be stored and retrieved like any other."""
+    ok = await store.set_key("github", "ghp_test_token_abc", "tok")
+    assert ok is True
+    result = await store.get_key("github", "tok")
+    assert result == "ghp_test_token_abc"
+
+
+@pytest.mark.asyncio
+async def test_set_and_get_brave_key(store):
+    """brave provider_id can be stored and retrieved."""
+    ok = await store.set_key("brave", "BSA_secret_key_xyz", "tok")
+    assert ok is True
+    result = await store.get_key("brave", "tok")
+    assert result == "BSA_secret_key_xyz"
+
+
+@pytest.mark.asyncio
+async def test_env_fallback_github(store, monkeypatch):
+    """env_fallback for github reads APP_GITHUB_TOKEN."""
+    monkeypatch.setenv("APP_GITHUB_TOKEN", "env-github-token")
+    result = store.env_fallback("github")
+    assert result == "env-github-token"
+
+
+@pytest.mark.asyncio
+async def test_env_fallback_brave(store, monkeypatch):
+    """env_fallback for brave reads BRAVE_SEARCH_API_KEY."""
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "env-brave-key")
+    result = store.env_fallback("brave")
+    assert result == "env-brave-key"

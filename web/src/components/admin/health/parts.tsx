@@ -179,7 +179,7 @@ export function ProviderBudgetsSection({
 }: {
   providers: Record<string, ProviderBudgetEntry>;
   disabled?: boolean;
-  onPatchBudget: (provider_id: string, max_daily_usd: number, max_monthly_usd: number) => void;
+  onPatchBudget: (provider_id: string, max_daily_usd: number, max_monthly_usd: number) => Promise<string | null>;
 }) {
   const entries = Object.entries(providers);
   if (!entries.length) return <p className="text-xs text-brand-offwhite/38">No per-provider budget data available.</p>;
@@ -204,10 +204,12 @@ function ProviderBudgetCard({
   pid: string;
   entry: ProviderBudgetEntry;
   disabled?: boolean;
-  onPatchBudget: (provider_id: string, max_daily_usd: number, max_monthly_usd: number) => void;
+  onPatchBudget: (provider_id: string, max_daily_usd: number, max_monthly_usd: number) => Promise<string | null>;
 }) {
   const [draftDay, setDraftDay] = useState(String(entry.max_daily_usd));
   const [draftMonth, setDraftMonth] = useState(String(entry.max_monthly_usd));
+  const [capSaving, setCapSaving] = useState(false);
+  const [capError, setCapError] = useState("");
   const bal = entry.balance;
   const dayPct = entry.max_daily_usd > 0 ? Math.min(100, (entry.used?.day_usd ?? 0) / entry.max_daily_usd * 100) : 0;
   return (
@@ -250,13 +252,27 @@ function ProviderBudgetCard({
           <div className="mt-2 flex flex-col gap-2">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-brand-offwhite/38">Daily USD</span>
-              <input type="number" min="0" step="0.5" value={draftDay} disabled={disabled} onChange={(e) => setDraftDay(e.target.value)} className="rounded-lg border border-brand-gold-warm/15 bg-black/35 px-2 py-1 text-xs text-brand-offwhite outline-none focus:border-brand-gold disabled:cursor-wait disabled:opacity-60" />
+              <input type="number" min="0" step="0.5" value={draftDay} disabled={disabled || capSaving} onChange={(e) => { setDraftDay(e.target.value); setCapError(""); }} className="rounded-lg border border-brand-gold-warm/15 bg-black/35 px-2 py-1 text-xs text-brand-offwhite outline-none focus:border-brand-gold disabled:cursor-wait disabled:opacity-60" />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-brand-offwhite/38">Monthly USD</span>
-              <input type="number" min="0" step="1" value={draftMonth} disabled={disabled} onChange={(e) => setDraftMonth(e.target.value)} className="rounded-lg border border-brand-gold-warm/15 bg-black/35 px-2 py-1 text-xs text-brand-offwhite outline-none focus:border-brand-gold disabled:cursor-wait disabled:opacity-60" />
+              <input type="number" min="0" step="1" value={draftMonth} disabled={disabled || capSaving} onChange={(e) => { setDraftMonth(e.target.value); setCapError(""); }} className="rounded-lg border border-brand-gold-warm/15 bg-black/35 px-2 py-1 text-xs text-brand-offwhite outline-none focus:border-brand-gold disabled:cursor-wait disabled:opacity-60" />
             </label>
-            <button type="button" disabled={disabled} onClick={() => onPatchBudget(pid, Number(draftDay) || 0, Number(draftMonth) || 0)} className="rounded-lg bg-brand-gold px-3 py-1 text-xs text-brand-dark disabled:cursor-wait disabled:opacity-60">Save</button>
+            <button
+              type="button"
+              disabled={disabled || capSaving}
+              onClick={async () => {
+                setCapSaving(true);
+                setCapError("");
+                const err = await onPatchBudget(pid, Number(draftDay) || 0, Number(draftMonth) || 0);
+                if (err) setCapError(err);
+                setCapSaving(false);
+              }}
+              className="rounded-lg bg-brand-gold px-3 py-1 text-xs text-brand-dark disabled:cursor-wait disabled:opacity-60"
+            >
+              {capSaving ? "Saving…" : "Save"}
+            </button>
+            {capError && <p className="mt-1 text-xs text-red-400">{capError}</p>}
           </div>
         </div>
       </div>

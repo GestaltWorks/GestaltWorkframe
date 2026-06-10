@@ -296,6 +296,16 @@ class OpenAICompatibleProvider(LLMProvider):
             headers={"Authorization": f"Bearer {api_key}"},
         )
 
+    async def update_api_key(self, new_key: str) -> None:
+        """Replace the in-flight httpx client with one using the new key."""
+        old = self.client
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=60.0,
+            headers={"Authorization": f"Bearer {new_key}"},
+        )
+        await old.aclose()
+
     async def is_healthy(self) -> bool:
         return (await self.health_status())["endpoint_healthy"]
 
@@ -394,6 +404,10 @@ class ClaudeProvider(LLMProvider):
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = model
         self.params = params or GenerationParams(max_tokens=4096)
+
+    async def update_api_key(self, new_key: str) -> None:
+        """Replace the Anthropic client with one using the new key."""
+        self.client = AsyncAnthropic(api_key=new_key)
 
     def _message_params(self, messages: list[Message]) -> dict[str, Any]:
         system_parts = []

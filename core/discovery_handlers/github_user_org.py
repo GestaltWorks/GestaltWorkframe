@@ -32,12 +32,12 @@ def _candidate(account: str, repo: dict[str, Any]) -> FindCandidate:
     )
 
 
-async def _fetch_repos(http: httpx.AsyncClient, account: str, org: bool) -> httpx.Response:
+async def _fetch_repos(http: httpx.AsyncClient, account: str, org: bool, token: str = "") -> httpx.Response:
     kind = "orgs" if org else "users"
     return await http.get(
         f"{GITHUB_API_ROOT}/{kind}/{account}/repos",
         params={"sort": "updated", "per_page": MAX_REPOS},
-        headers=_auth_headers(),
+        headers=_auth_headers(token),
         timeout=15,
     )
 
@@ -46,9 +46,9 @@ async def poll(source: DiscoverySourceLike, http: httpx.AsyncClient) -> PollResu
     account = source.target.strip().strip("/")
     if not account:
         return PollResult(finds=[], status="error", error="github_user_org_watch requires an account")
-    response = await _fetch_repos(http, account, org=True)
+    response = await _fetch_repos(http, account, org=True, token=source.auth_token)
     if response.status_code == 404:
-        response = await _fetch_repos(http, account, org=False)
+        response = await _fetch_repos(http, account, org=False, token=source.auth_token)
     if response.status_code >= 400:
         return PollResult(finds=[], status="error", error=f"GitHub repos HTTP {response.status_code}")
     payload = response.json()

@@ -213,6 +213,8 @@ async def run_one_pass(
     seed: Iterable[WatchedSource] = WATCHLIST_SEED,
     poll_concurrency: int = DEFAULT_POLL_CONCURRENCY,
     per_source_timeout_seconds: float = DEFAULT_SOURCE_TIMEOUT_SECONDS,
+    key_store: Optional[ApiKeyStore] = None,
+    admin_token: str = "",
 ) -> SchedulerRunReport:
     """Reconcile seed, poll due sources, record findings, return a report."""
 
@@ -260,6 +262,8 @@ async def run_one_pass(
                         client,
                         semaphore,
                         per_source_timeout_seconds=per_source_timeout_seconds,
+                        key_store=key_store,
+                        admin_token=admin_token,
                     )
                 )
             )
@@ -337,20 +341,36 @@ async def run_one_pass(
     )
 
 
+# Maps watch_type to the key-store provider_id that holds its auth token.
+_WATCH_TYPE_TO_PROVIDER: dict[str, str] = {
+    "github_repo_watch": "github",
+    "github_repo_artifact_scan": "github",
+    "github_topic_watch": "github",
+    "github_user_org_watch": "github",
+    "saved_search": "brave",
+}
+
 async def _poll_source(
     source: DiscoverySource,
     client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
     *,
     per_source_timeout_seconds: float,
+    key_store: Optional[ApiKeyStore] = None,
+    admin_token: str = "",
 ) -> tuple[DiscoverySource, PollResult | None, str]:
     handler = get_handler(source.watch_type)
+    provider_id = _WATCH_TYPE_TO_PROVIDER.get(source.watch_type, "")
+    auth_token = ""
+    if provider_id and key_store and admin_token:
+        auth_token = await key_store.get_key(provider_id, admin_token) or ""
     like = DiscoverySourceLike(
         name=source.name,
         watch_type=source.watch_type,
         target=source.target,
         etag=source.etag,
         last_modified=source.last_modified,
+        auth_token=auth_token,
     )
     async with semaphore:
         try:

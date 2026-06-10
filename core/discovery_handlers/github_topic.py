@@ -39,7 +39,7 @@ async def poll(source: DiscoverySourceLike, http: httpx.AsyncClient) -> PollResu
     response = await http.get(
         f"{GITHUB_API_ROOT}/search/repositories",
         params={"q": f"topic:{topic}", "sort": "updated", "order": "desc", "per_page": MAX_REPOS},
-        headers=_auth_headers(),
+        headers=_auth_headers(source.auth_token),
         timeout=15,
     )
     if response.status_code >= 400:

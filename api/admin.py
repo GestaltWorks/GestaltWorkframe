@@ -81,13 +81,68 @@ class ProviderKeyTestResult(BaseModel):
 
 
 async def _test_provider_key(provider_id: str, api_key: str) -> ProviderKeyTestResult:
-    """Make a minimal live test call to verify the key is accepted."""
+    """Make a minimal live test call to verify the key is accepted.
+
+    Uses cheapest read-only endpoints: /v1/models for Anthropic and OpenAI,
+    the Gemini models list for Google. No inference tokens consumed.
+    """
+    import httpx
+
     if provider_id == "openrouter":
         from core.provider_balance import OpenRouterBalanceChecker
         checker = OpenRouterBalanceChecker(api_key)
         snap = await checker.get()
         return ProviderKeyTestResult(valid=snap.available, error=snap.error)
-    # For other providers: presence check only (no live call to avoid spend).
+
+    if provider_id == "anthropic":
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                    },
+                )
+            if resp.status_code == 200:
+                return ProviderKeyTestResult(valid=True)
+            if resp.status_code == 401:
+                return ProviderKeyTestResult(valid=False, error="invalid_api_key")
+            return ProviderKeyTestResult(valid=False, error=f"unexpected_status_{resp.status_code}")
+        except Exception as exc:
+            return ProviderKeyTestResult(valid=False, error=f"request_error: {exc}")
+
+    if provider_id == "openai":
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+            if resp.status_code == 200:
+                return ProviderKeyTestResult(valid=True)
+            if resp.status_code == 401:
+                return ProviderKeyTestResult(valid=False, error="invalid_api_key")
+            return ProviderKeyTestResult(valid=False, error=f"unexpected_status_{resp.status_code}")
+        except Exception as exc:
+            return ProviderKeyTestResult(valid=False, error=f"request_error: {exc}")
+
+    if provider_id == "google":
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://generativelanguage.googleapis.com/v1beta/models",
+                    params={"key": api_key},
+                )
+            if resp.status_code == 200:
+                return ProviderKeyTestResult(valid=True)
+            if resp.status_code in (400, 403):
+                return ProviderKeyTestResult(valid=False, error="invalid_api_key")
+            return ProviderKeyTestResult(valid=False, error=f"unexpected_status_{resp.status_code}")
+        except Exception as exc:
+            return ProviderKeyTestResult(valid=False, error=f"request_error: {exc}")
+
+    # Unknown provider: presence check only.
     return ProviderKeyTestResult(valid=bool(api_key), error="" if api_key else "empty_key")
 
 
@@ -344,6 +399,8 @@ async def set_provider_key(
     # Invalidate the balance checker cache for OpenRouter if the key changed.
     if provider_id == "openrouter" and services.balance_checker is not None:
         services.balance_checker.invalidate()
+    # Push the new key to any live provider instances so they take effect immediately.
+    await services.llm_router.rotate_provider_key(provider_id, body.key)
     test_result = await _test_provider_key(provider_id, body.key)
     has = await services.key_store.has_key(provider_id)
     return {"provider_id": provider_id, "stored": has, "test": test_result.model_dump()}
@@ -360,9 +417,13 @@ async def delete_provider_key(
     if services.key_store is None:
         raise HTTPException(status_code=503, detail="Key store not available")
     deleted = await services.key_store.delete_key(provider_id)
-    env_fallback = bool(services.key_store.env_fallback(provider_id))
+    env_key = services.key_store.env_fallback(provider_id)
+    env_fallback = bool(env_key)
     if provider_id == "openrouter" and services.balance_checker is not None:
         services.balance_checker.invalidate()
+    # Rotate live providers to the env fallback key (or empty string to deactivate).
+    if env_key:
+        await services.llm_router.rotate_provider_key(provider_id, env_key)
     return {"provider_id": provider_id, "deleted": deleted, "env_fallback_available": env_fallback}
 
 

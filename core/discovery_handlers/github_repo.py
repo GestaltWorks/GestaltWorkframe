@@ -4,8 +4,8 @@ Polls a single GitHub repository for new releases and a commit-delta signal on
 the default branch since the last successful poll. Uses the GitHub REST API
 with conditional-fetch headers (ETag, If-Modified-Since) to stay polite.
 
-The token is read from the `APP_GITHUB_TOKEN` environment variable when
-present. Per the project's non-negotiables the token never enters LLM context;
+The token is resolved from `source.auth_token` (set by the scheduler from
+the key store) and falls back to the `APP_GITHUB_TOKEN` environment variable. Per the project's non-negotiables the token never enters LLM context;
 this handler only uses it for HTTP auth. Anonymous fallback works for public
 repos but is sharply rate-limited (60 requests/hour).
 """
@@ -34,15 +34,15 @@ RELEASE_PAGE_SIZE = 10
 COMMIT_PAGE_SIZE = 30
 
 
-def _auth_headers() -> dict[str, str]:
+def _auth_headers(token: str = "") -> dict[str, str]:
     headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": GITHUB_USER_AGENT,
     }
-    token = os.getenv("APP_GITHUB_TOKEN", "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    resolved = token or os.getenv("APP_GITHUB_TOKEN", "").strip()
+    if resolved:
+        headers["Authorization"] = f"Bearer {resolved}"
     return headers
 
 
@@ -84,13 +84,13 @@ def _commit_payload(commit: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _fetch_releases(
-    http: httpx.AsyncClient, owner_repo: str
+    http: httpx.AsyncClient, owner_repo: str, token: str = ""
 ) -> list[dict[str, Any]]:
     url = f"{GITHUB_API_ROOT}/repos/{owner_repo}/releases"
     response = await http.get(
         url,
         params={"per_page": RELEASE_PAGE_SIZE},
-        headers=_auth_headers(),
+        headers=_auth_headers(token),
         timeout=DEFAULT_TIMEOUT_SECONDS,
     )
     if response.status_code == 404:
@@ -108,7 +108,7 @@ async def _fetch_commits(
     """Return commits, etag, last-modified, and not_modified flag."""
 
     url = f"{GITHUB_API_ROOT}/repos/{owner_repo}/commits"
-    headers = _auth_headers()
+    headers = _auth_headers(source.auth_token)
     headers.update(_conditional_headers(source))
     response = await http.get(
         url,
@@ -177,7 +177,7 @@ async def poll(source: DiscoverySourceLike, http: httpx.AsyncClient) -> PollResu
     not_modified = False
 
     try:
-        releases = await _fetch_releases(http, owner_repo)
+        releases = await _fetch_releases(http, owner_repo, source.auth_token)
         finds.extend(_release_to_candidate(owner_repo, release) for release in releases)
 
         commits, etag, last_modified, not_modified = await _fetch_commits(http, owner_repo, source)

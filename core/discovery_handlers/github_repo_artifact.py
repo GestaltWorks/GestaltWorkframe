@@ -51,10 +51,10 @@ HIGH_VALUE_PATH_TERMS = (
 )
 
 
-async def _repo_metadata(http: httpx.AsyncClient, owner_repo: str) -> tuple[str, str]:
+async def _repo_metadata(http: httpx.AsyncClient, owner_repo: str, token: str = "") -> tuple[str, str]:
     response = await http.get(
         f"{GITHUB_API_ROOT}/repos/{owner_repo}",
-        headers=_auth_headers(),
+        headers=_auth_headers(token),
         timeout=DEFAULT_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
@@ -70,7 +70,7 @@ async def _repo_tree(
     ref: str,
     source: DiscoverySourceLike,
 ) -> tuple[list[dict[str, Any]], str, bool]:
-    headers = _auth_headers()
+    headers = _auth_headers(source.auth_token)
     headers.update(_conditional_headers(source))
     response = await http.get(
         f"{GITHUB_API_ROOT}/repos/{owner_repo}/git/trees/{ref}",
@@ -179,6 +179,7 @@ async def _latest_commit_at(
     http: httpx.AsyncClient,
     owner_repo: str,
     path: str,
+    token: str = "",
 ) -> datetime | None:
     """Latest commit timestamp touching `path`. Returns None on any
     failure so the scheduler keeps making progress; the admin UI just
@@ -187,7 +188,7 @@ async def _latest_commit_at(
         response = await http.get(
             f"{GITHUB_API_ROOT}/repos/{owner_repo}/commits",
             params={"path": path, "per_page": "1"},
-            headers=_auth_headers(),
+            headers=_auth_headers(token),
             timeout=DEFAULT_TIMEOUT_SECONDS,
         )
         if response.status_code >= 400:
@@ -251,7 +252,7 @@ async def poll(source: DiscoverySourceLike, http: httpx.AsyncClient) -> PollResu
         return PollResult(finds=[], status="error", error=f"Invalid github_repo_artifact_scan target: {source.target!r}")
 
     try:
-        default_branch, repo_url = await _repo_metadata(http, owner_repo)
+        default_branch, repo_url = await _repo_metadata(http, owner_repo, source.auth_token)
         tree, etag, not_modified = await _repo_tree(http, owner_repo, default_branch, source)
     except httpx.HTTPError as exc:
         logger.warning("github_repo_artifact_scan failed for %s: %s", owner_repo, exc)
@@ -296,7 +297,7 @@ async def poll(source: DiscoverySourceLike, http: httpx.AsyncClient) -> PollResu
     for category, children in ranked:
         last_upstream: datetime | None = None
         if lookup_budget > 0:
-            last_upstream = await _latest_commit_at(http, owner_repo, category)
+            last_upstream = await _latest_commit_at(http, owner_repo, category, source.auth_token)
             lookup_budget -= 1
         candidates.append(_build_category_candidate(
             owner_repo, repo_url, category, children, last_upstream,

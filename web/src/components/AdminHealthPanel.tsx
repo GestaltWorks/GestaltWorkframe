@@ -120,16 +120,17 @@ export default function AdminHealthPanel() {
     }
   };
 
-  const patchProviderBudget = async (provider_id: string, max_daily_usd: number, max_monthly_usd: number) => {
-    await patchPolicy({
+  const patchProviderBudget = async (provider_id: string, max_daily_usd: number, max_monthly_usd: number): Promise<string | null> => {
+    return patchPolicy({
       provider_budgets: { [provider_id]: { max_daily_usd, max_monthly_usd } },
     });
   };
 
-  const patchPolicy = async (patch: Record<string, unknown>) => {
+  const patchPolicy = async (patch: Record<string, unknown>): Promise<string | null> => {
     if (!token.trim()) {
-      setError("Enter the admin access token before saving policy changes.");
-      return;
+      const msg = "Enter the admin access token before saving policy changes.";
+      setError(msg);
+      return msg;
     }
     setSaving("Saving policy...");
     setError("");
@@ -143,8 +144,11 @@ export default function AdminHealthPanel() {
       if (!response.ok) throw new Error(await responseError(response, `HTTP ${response.status}`));
       setHealth(await response.json() as ProviderHealth);
       setLastUpdatedAt(responseTimestamp(response));
+      return null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update policy");
+      const msg = err instanceof Error ? err.message : "Failed to update policy";
+      setError(msg);
+      return msg;
     } finally {
       setSaving("");
     }
