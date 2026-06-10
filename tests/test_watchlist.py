@@ -2,8 +2,8 @@ from dataclasses import replace
 
 import pytest
 
-from kb.target_safety import validate_discovery_target, validate_public_https_url
-from kb.watchlist import (
+from gestaltworkframe.kb.target_safety import validate_discovery_target, validate_public_https_url
+from gestaltworkframe.kb.watchlist import (
     ALLOWED_REFRESH_CADENCES,
     ALLOWED_WATCH_TYPES,
     CADENCE_SECONDS,
@@ -11,7 +11,7 @@ from kb.watchlist import (
     refresh_seconds,
     validate_watchlist,
 )
-from kb.watchlist_seed import WATCHLIST_SEED
+from gestaltworkframe.kb.watchlist_seed import WATCHLIST_SEED
 
 
 def _watch(name: str = "test_repo", watch_type: str = "github_repo_watch") -> WatchedSource:

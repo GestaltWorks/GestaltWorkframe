@@ -7,7 +7,7 @@ from typing import Any
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from mcp.server.fastmcp import FastMCP
-from kb.retrieval_format import (
+from gestaltworkframe.kb.retrieval_format import (
     NO_RELEVANT_INFO_MESSAGE,
     SEARCH_ERROR_MESSAGE,
     format_search_results,
@@ -16,7 +16,7 @@ from kb.retrieval_format import (
 logger = logging.getLogger(__name__)
 
 # Setup Chroma DB connection
-CHROMA_DB_DIR = Path(os.getenv("CHROMA_DB_DIR", "kb/chroma_db"))
+CHROMA_DB_DIR = Path(os.getenv("CHROMA_DB_DIR", "gestaltworkframe/kb/chroma_db"))
 DEFAULT_NUM_RESULTS = 5
 MAX_NUM_RESULTS = 10
 

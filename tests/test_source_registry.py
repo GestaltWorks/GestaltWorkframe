@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from kb.source_registry import CorpusSource, source_metadata, validate_source_registry
+from gestaltworkframe.kb.source_registry import CorpusSource, source_metadata, validate_source_registry
 
 
 def _source(name: str = "client_kb") -> CorpusSource:

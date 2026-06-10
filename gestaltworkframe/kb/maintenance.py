@@ -8,8 +8,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kb.discovery_ingest import purge_discovery_find_from_chroma
-from kb.ingest import CHROMA_DB_DIR, main as ingest_main
+from gestaltworkframe.kb.discovery_ingest import purge_discovery_find_from_chroma
+from gestaltworkframe.kb.ingest import CHROMA_DB_DIR, main as ingest_main
 
 logger = logging.getLogger(__name__)
 

@@ -34,7 +34,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from kb.target_safety import validate_public_https_url
+from gestaltworkframe.kb.target_safety import validate_public_https_url
 
 logger = logging.getLogger(__name__)
 

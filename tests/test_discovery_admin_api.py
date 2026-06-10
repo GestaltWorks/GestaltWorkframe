@@ -13,7 +13,7 @@ from sqlmodel import SQLModel, select
 import api.admin_discovery as api_admin_discovery
 import api.main as api_main
 from gestaltworkframe.core.db import DiscoveryAudit, DiscoveryFind, DiscoverySource
-from kb.library_publisher import LibraryPublisherError, LibraryPublishResult
+from gestaltworkframe.kb.library_publisher import LibraryPublisherError, LibraryPublishResult
 
 
 def _source_body(name: str = "manual_source") -> dict[str, object]:

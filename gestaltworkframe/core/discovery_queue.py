@@ -29,9 +29,9 @@ from gestaltworkframe.core.db import (
     DiscoveryFind,
     DiscoverySource,
 )
-from kb.watchlist import WatchedSource, refresh_seconds, validate_watchlist
-from kb.library_publisher import delete_library_file, publish_find_to_library
-from kb.discovery_ingest import ingest_approved_find_into_chroma, purge_discovery_find_from_chroma
+from gestaltworkframe.kb.watchlist import WatchedSource, refresh_seconds, validate_watchlist
+from gestaltworkframe.kb.library_publisher import delete_library_file, publish_find_to_library
+from gestaltworkframe.kb.discovery_ingest import ingest_approved_find_into_chroma, purge_discovery_find_from_chroma
 from gestaltworkframe.core.discovery_display import enrich_find_display, enrich_source_display
 from gestaltworkframe.core.discovery_summary import enrich_discovery_find
 

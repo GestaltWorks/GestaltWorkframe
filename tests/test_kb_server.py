@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 import mcp_servers.kb_server as kb_server
-from kb import retrieval_format, source_links
-from kb.source_links import SourceLinkProfile
+from gestaltworkframe.kb import retrieval_format, source_links
+from gestaltworkframe.kb.source_links import SourceLinkProfile
 
 
 def _doc(source: str, content: str, doc_type: str = ".md", source_name: str = "test"):

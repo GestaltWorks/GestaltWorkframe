@@ -24,7 +24,7 @@ from gestaltworkframe.core.discovery_handlers import (
     PollResult,
     register,
 )
-from kb.target_safety import validate_public_https_url
+from gestaltworkframe.kb.target_safety import validate_public_https_url
 
 logger = logging.getLogger(__name__)
 

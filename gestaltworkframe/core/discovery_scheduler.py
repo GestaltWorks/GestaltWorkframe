@@ -42,8 +42,8 @@ from gestaltworkframe.core.discovery_handlers import (
     get_handler,
     registered_watch_types,
 )
-from kb.watchlist import WatchedSource, refresh_seconds, validate_watchlist
-from kb.watchlist_seed import WATCHLIST_SEED
+from gestaltworkframe.kb.watchlist import WatchedSource, refresh_seconds, validate_watchlist
+from gestaltworkframe.kb.watchlist_seed import WATCHLIST_SEED
 
 logger = logging.getLogger(__name__)
 
@@ -473,7 +473,7 @@ async def _auto_ingest_if_eligible(record: DiscoveryFind, source: DiscoverySourc
     # exists to make library queryable; we still write Chroma below regardless
     # so the LLM has the reference even if the publisher is unconfigured.
     try:
-        from kb.library_publisher import (
+        from gestaltworkframe.kb.library_publisher import (
             LibraryPublisherConfigError,
             LibraryPublisherError,
             publish_find_to_library,
@@ -491,7 +491,7 @@ async def _auto_ingest_if_eligible(record: DiscoveryFind, source: DiscoverySourc
         # LibraryPublisherConfigError is the "creds absent" path: log at debug
         # so a development VPS without library creds doesn't spam warnings.
         try:
-            from kb.library_publisher import LibraryPublisherConfigError as _ConfigErr
+            from gestaltworkframe.kb.library_publisher import LibraryPublisherConfigError as _ConfigErr
             if isinstance(exc, _ConfigErr):
                 logger.debug(
                     "library publisher unconfigured; skipping repo publish for find %s",
@@ -510,7 +510,7 @@ async def _auto_ingest_if_eligible(record: DiscoveryFind, source: DiscoverySourc
 
     # Chroma index second. Cheap, local, fast.
     try:
-        from kb.discovery_ingest import ingest_approved_find_into_chroma
+        from gestaltworkframe.kb.discovery_ingest import ingest_approved_find_into_chroma
         await asyncio.to_thread(ingest_approved_find_into_chroma, record, source)
         record.ingested_into_chroma = True
     except Exception as exc:  # noqa: BLE001 - never block persistence on index failure

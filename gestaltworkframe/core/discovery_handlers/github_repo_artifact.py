@@ -29,7 +29,7 @@ import httpx
 
 from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike, FindCandidate, PollResult, register
 from gestaltworkframe.core.discovery_handlers.github_repo import GITHUB_API_ROOT, _auth_headers, _conditional_headers
-from kb.target_safety import GITHUB_REPO_RE
+from gestaltworkframe.kb.target_safety import GITHUB_REPO_RE
 
 logger = logging.getLogger(__name__)
 

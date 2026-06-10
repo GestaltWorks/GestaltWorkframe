@@ -25,7 +25,7 @@ from gestaltworkframe.core.discovery_scheduler import (
     run_one_pass,
     select_due_sources,
 )
-from kb.watchlist import WatchedSource
+from gestaltworkframe.kb.watchlist import WatchedSource
 
 
 def _seed_entry(

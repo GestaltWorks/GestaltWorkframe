@@ -15,7 +15,7 @@ build/
 
 # --- Data / artifacts ---
 database.db
-kb/chroma_db/
+gestaltworkframe/kb/chroma_db/
 
 # --- Local LLM binaries ---
 *.gguf

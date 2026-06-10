@@ -24,7 +24,7 @@ PRIORITY_PATTERNS = [
     "tests/test_api_main.py", "claude.md", "README.md", "objectives.md",
 ]
 EXCLUDE_PATTERNS = [
-    "uv.lock", "web/pnpm-lock.yaml", "kb/chroma_db/**",
+    "uv.lock", "web/pnpm-lock.yaml", "gestaltworkframe/kb/chroma_db/**",
 ]
 SECRET_PATTERNS = [
     (re.compile(r"(?i)(api[_-]?key|token|secret|password|passwd|client[_-]?secret)\s*[:=]\s*[^\s'\"]+"), r"\1=<REDACTED>"),

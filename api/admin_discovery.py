@@ -63,9 +63,9 @@ from gestaltworkframe.core.url_metadata import (
 )
 from gestaltworkframe.core.discovery_scheduler import run_one_pass
 from gestaltworkframe.core.discovery_summary import summarize_discovery_finds
-from kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
-from kb.target_safety import validate_public_https_url
-from kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
+from gestaltworkframe.kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
+from gestaltworkframe.kb.target_safety import validate_public_https_url
+from gestaltworkframe.kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
 
 
 logger = logging.getLogger(__name__)

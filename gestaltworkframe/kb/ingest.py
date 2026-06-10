@@ -7,8 +7,8 @@ from langchain_community.document_loaders import BSHTMLLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-from kb.source_links import public_source_url
-from kb.source_registry import CorpusSource, source_metadata, validate_source_registry
+from gestaltworkframe.kb.source_links import public_source_url
+from gestaltworkframe.kb.source_registry import CorpusSource, source_metadata, validate_source_registry
 
 # Paths — required via env vars; no host-specific defaults
 MAIN_CORPUS_PATH = Path(

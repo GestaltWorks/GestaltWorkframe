@@ -8,7 +8,7 @@ import re
 import httpx
 
 from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike, FindCandidate, PollResult, register
-from kb.target_safety import validate_public_https_url
+from gestaltworkframe.kb.target_safety import validate_public_https_url
 
 _WS = re.compile(r"\s+")
 

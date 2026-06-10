@@ -8,7 +8,7 @@ import httpx
 
 from gestaltworkframe.core.discovery_handlers import DiscoverySourceLike, PollResult, register
 from gestaltworkframe.core.discovery_handlers.rss import _detect_and_parse
-from kb.target_safety import validate_discovery_target
+from gestaltworkframe.kb.target_safety import validate_discovery_target
 
 
 def _feed_url(target: str) -> str:

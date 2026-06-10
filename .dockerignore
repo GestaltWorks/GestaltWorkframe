@@ -26,7 +26,7 @@ web/.turbo/
 # Local data — operator-owned, mounted as volumes at runtime instead.
 database.db
 database.db-*
-kb/chroma_db/
+gestaltworkframe/kb/chroma_db/
 *.sqlite
 *.sqlite-*
 

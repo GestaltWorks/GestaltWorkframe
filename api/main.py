@@ -146,8 +146,8 @@ from gestaltworkframe.core.router import ROUTING_STRATEGIES
 # Backward-compat: tests historically reached for `api.main.clean_intake_text`.
 # The implementation now lives wherever the consumer needs it; re-export here.
 from api.chat import clean_intake_text  # noqa: F401
-from kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
-from kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
+from gestaltworkframe.kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
+from gestaltworkframe.kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
 from mcp_servers.kb_server import vectorstore_document_count
 
 logger = logging.getLogger(__name__)

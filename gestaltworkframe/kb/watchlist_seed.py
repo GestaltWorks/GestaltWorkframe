@@ -13,7 +13,7 @@ on the `discovery_sources` table; this seed is the canonical declaration,
 regenerable on demand.
 """
 
-from kb.watchlist import WatchedSource, validate_watchlist
+from gestaltworkframe.kb.watchlist import WatchedSource, validate_watchlist
 
 
 # Minimal sample. Replace with sources relevant to your deployment.

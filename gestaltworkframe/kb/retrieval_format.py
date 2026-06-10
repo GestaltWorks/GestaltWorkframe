@@ -1,6 +1,6 @@
 from typing import Any
 
-from kb.source_links import library_entry_url, public_source_url
+from gestaltworkframe.kb.source_links import library_entry_url, public_source_url
 
 NO_RELEVANT_INFO_MESSAGE = "No relevant information found in the knowledge base."
 SEARCH_ERROR_MESSAGE = "Error searching knowledge base."

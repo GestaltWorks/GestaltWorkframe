@@ -12,7 +12,7 @@ M2/M3 support read-only public source polling. Watch rows never hold secrets.
 from dataclasses import dataclass
 from typing import Iterable
 
-from kb.target_safety import validate_discovery_target
+from gestaltworkframe.kb.target_safety import validate_discovery_target
 
 ALLOWED_WATCH_TYPES = frozenset(
     {

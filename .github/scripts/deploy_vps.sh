@@ -135,7 +135,7 @@ rsync -az --delete \
   --exclude '.ssh/' \
   --exclude '.env' \
   --exclude 'database.db' \
-  --exclude 'kb/chroma_db/' \
+  --exclude 'gestaltworkframe/kb/chroma_db/' \
   --exclude 'web/node_modules/' \
   --exclude 'web/.next/' \
   --exclude 'web/out/' \
