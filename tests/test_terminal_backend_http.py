@@ -3,9 +3,9 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-import api.chat as api_chat
-import api.intake as api_intake
-import api.main as api_main
+import gestaltworkframe.api.chat as api_chat
+import gestaltworkframe.api.intake as api_intake
+import gestaltworkframe.api.main as api_main
 from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
 from gestaltworkframe.core.orchestrator import Orchestrator
 

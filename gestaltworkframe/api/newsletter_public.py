@@ -1,6 +1,6 @@
 """Public newsletter endpoints: signup + unsubscribe.
 
-This module is intentionally separate from api/admin_newsletter.py
+This module is intentionally separate from gestaltworkframe.api/admin_newsletter.py
 (token-gated approval/distribution). Everything here must be safe for
 an unauthenticated visitor to reach: rate-limited, no internal state
 leakage, and tokens used only for the bearer to act on their own row.
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.request_helpers import client_ip
+from gestaltworkframe.api.request_helpers import client_ip
 from gestaltworkframe.core.db import ContactRecord, get_session
 from gestaltworkframe.core.subscribers import ROLE_TOPICS, subscribe_and_reply, unsubscribe_by_token
 

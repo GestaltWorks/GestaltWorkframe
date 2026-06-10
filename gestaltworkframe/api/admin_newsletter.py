@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.services import require_admin_token
+from gestaltworkframe.api.services import require_admin_token
 from gestaltworkframe.core.db import get_session
 from gestaltworkframe.core.newsletter import (
     approve_and_schedule,

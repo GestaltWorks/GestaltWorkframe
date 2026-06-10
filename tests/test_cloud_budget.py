@@ -451,13 +451,13 @@ async def test_refresh_headroom_cache_populates_cache(tmp_path):
 async def test_provider_budgets_patch_mutates_caps(tmp_path):
     """provider_budgets in AdminPolicyPatch mutates in-memory ProviderBudgetConfig caps."""
     from unittest.mock import AsyncMock, MagicMock
-    from api.admin import AdminPolicyPatch, _apply_admin_policy
+    from gestaltworkframe.api.admin import AdminPolicyPatch, _apply_admin_policy
     from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
     from gestaltworkframe.core.router import LLMRouter, ProviderRoute
     from gestaltworkframe.core.orchestrator import Orchestrator
     from gestaltworkframe.core.policy import CloudSpendPolicy
     from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
-    from api.services import AppServices, ChatMetrics
+    from gestaltworkframe.api.services import AppServices, ChatMetrics
 
     db_path = str(tmp_path / "test.db")
     mock_provider = MagicMock()
@@ -512,13 +512,13 @@ async def test_provider_budgets_patch_rejects_both_zero_caps(tmp_path):
     """_apply_admin_policy raises HTTPException when both caps are zeroed on an enabled provider."""
     from unittest.mock import AsyncMock, MagicMock
     from fastapi import HTTPException
-    from api.admin import AdminPolicyPatch, _apply_admin_policy
+    from gestaltworkframe.api.admin import AdminPolicyPatch, _apply_admin_policy
     from gestaltworkframe.core.cloud_budget import CloudBudgetConfig, CloudBudgetGate, MultiProviderBudgetGate, ProviderBudgetConfig
     from gestaltworkframe.core.router import LLMRouter, ProviderRoute
     from gestaltworkframe.core.orchestrator import Orchestrator
     from gestaltworkframe.core.policy import CloudSpendPolicy
     from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
-    from api.services import AppServices, ChatMetrics
+    from gestaltworkframe.api.services import AppServices, ChatMetrics
 
     db_path = str(tmp_path / "test.db")
     mock_provider = MagicMock()

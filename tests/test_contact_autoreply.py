@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
-from api import contact, newsletter_public
+from gestaltworkframe.api import contact, newsletter_public
 from gestaltworkframe.core import contact_autoreply
 from gestaltworkframe.core import subscribers as subscribers_module
 from gestaltworkframe.core.db import Subscriber, SubscriberAutoReplyRecord
@@ -380,8 +380,8 @@ def test_subscribe_and_reply_helper_is_shared_by_both_paths():
     Guards against future drift where one entry point silently stops
     persisting Subscriber rows or sending auto-replies."""
     from pathlib import Path
-    contact = Path("api/contact.py").read_text(encoding="utf-8")
-    nl = Path("api/newsletter_public.py").read_text(encoding="utf-8")
+    contact = Path("gestaltworkframe/api/contact.py").read_text(encoding="utf-8")
+    nl = Path("gestaltworkframe/api/newsletter_public.py").read_text(encoding="utf-8")
     helper = Path("gestaltworkframe/core/subscribers.py").read_text(encoding="utf-8")
 
     assert "from gestaltworkframe.core.subscribers import subscribe_and_reply" in contact

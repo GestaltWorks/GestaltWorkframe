@@ -30,9 +30,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
-import api.main as api_main
-from api.chat import ChatRequest as _ChatRequest  # noqa: F401  - keep import path validated
-from api.services import AppServices, ChatMetrics
+import gestaltworkframe.api.main as api_main
+from gestaltworkframe.api.chat import ChatRequest as _ChatRequest  # noqa: F401  - keep import path validated
+from gestaltworkframe.api.services import AppServices, ChatMetrics
 from gestaltworkframe.core.db import Conversation, MessageRecord
 from gestaltworkframe.core.policy import ChatMode, ConversationStage, ResponsePolicy, RoutingDecision, ToneSignal, UserIntent
 
@@ -142,12 +142,12 @@ async def test_chat_stream_happy_path_persists_conversation_and_returns_sse(tmp_
     monkeypatch.setenv("SSE_HEARTBEAT_INTERVAL_SECONDS", "0")
     # Reload the chat module so the env override takes effect on the SSE_HEARTBEAT constant.
     import importlib
-    import api.chat
-    importlib.reload(api.chat)
+    import gestaltworkframe.api.chat
+    importlib.reload(gestaltworkframe.api.chat)
     # Re-mount the chat router after the reload so api_main.app picks up the reloaded handler.
     # Note: this is heavy-handed but keeps the test deterministic without a heartbeat dependency.
     api_main.app.router.routes = [r for r in api_main.app.router.routes if getattr(r, "path", "") != "/chat/stream"]
-    api_main.app.include_router(api.chat.router)
+    api_main.app.include_router(gestaltworkframe.api.chat.router)
 
     engine, maker, original_maker = await _start_app(tmp_path)
 

@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.services import require_admin_token
+from gestaltworkframe.api.services import require_admin_token
 from gestaltworkframe.core.db import get_session
 from gestaltworkframe.core.discovery_digest import send_discovery_digest
 from gestaltworkframe.core.discovery_queue import (

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.request_helpers import client_ip, make_body_size_limit
+from gestaltworkframe.api.request_helpers import client_ip, make_body_size_limit
 from gestaltworkframe.core.db import ContactNotificationRecord, ContactRecord, get_session
 from gestaltworkframe.core.email_service import send_contact_notification
 from gestaltworkframe.core.subscribers import subscribe_and_reply

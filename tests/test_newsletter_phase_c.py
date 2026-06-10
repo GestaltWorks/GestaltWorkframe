@@ -28,8 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 
-import api.admin_discovery as api_admin_discovery
-import api.main as api_main
+import gestaltworkframe.api.admin_discovery as api_admin_discovery
+import gestaltworkframe.api.main as api_main
 from gestaltworkframe.core import newsletter as newsletter_module
 from gestaltworkframe.core.db import (
     DiscoveryFind,

@@ -12,7 +12,7 @@ import asyncio
 
 import pytest
 
-from api.chat import _with_heartbeat
+from gestaltworkframe.api.chat import _with_heartbeat
 
 
 async def _async_iter(items: list[str], *, delay: float = 0.0):

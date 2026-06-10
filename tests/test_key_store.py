@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
-import api.main as api_main
+import gestaltworkframe.api.main as api_main
 from gestaltworkframe.core.key_store import ApiKeyStore
 
 
@@ -179,7 +179,7 @@ def _make_client(tmp_path, monkeypatch):
     from gestaltworkframe.core.orchestrator import Orchestrator
     from gestaltworkframe.core.policy import CloudSpendPolicy
     from gestaltworkframe.core.chat_orchestrator import ChatTurnOrchestrator
-    from api.services import AppServices, ChatMetrics
+    from gestaltworkframe.api.services import AppServices, ChatMetrics
 
     async def _fake_build():
         key_store = ApiKeyStore(db_path)

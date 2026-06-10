@@ -18,9 +18,9 @@ from sqlmodel import select
 # Backward-compat: api.main historically exposed every chat-surface symbol.
 # The chat router, models, helpers, and constants now live in api.chat;
 # importing them here keeps the historical surface area for tests and external
-# code that does `import api.main as api_main` and reaches for ChatRequest,
+# code that does `import gestaltworkframe.api.main as api_main` and reaches for ChatRequest,
 # ChatMetrics, chat_stream, etc.
-from api.chat import (
+from gestaltworkframe.api.chat import (
     CHAT_DAILY_TOKEN_LIMIT,
     CHAT_IP_LIMIT,
     CHAT_IP_WINDOW,
@@ -49,8 +49,8 @@ from api.chat import (
     _selected_route_tier,
     _utc_day_start,
 )
-from api.contact import contact_body_size_limit, router as contact_router
-from api.admin import (
+from gestaltworkframe.api.contact import contact_body_size_limit, router as contact_router
+from gestaltworkframe.api.admin import (
     ADMIN_HANDOFF_LIMIT,
     AdminPolicyPatch,
     DEFAULT_CLOUD_INPUT_TOKEN_CAP,
@@ -65,7 +65,7 @@ from api.admin import (
     _recent_handoff_packets,
     _safe_json_dict,
 )
-from api.admin_discovery import (
+from gestaltworkframe.api.admin_discovery import (
     DISCOVERY_RUN_ONCE_MIN_INTERVAL_SECONDS,
     DiscoveryLibraryPromotionRequest,
     DiscoveryDecisionRequest,
@@ -83,8 +83,8 @@ from api.admin_discovery import (
     admin_discovery_update_source,
     router as admin_discovery_router,
 )
-from api.library_feed import router as library_feed_router, library_latest_feed
-from api.health import (
+from gestaltworkframe.api.library_feed import router as library_feed_router, library_latest_feed
+from gestaltworkframe.api.health import (
     router as health_router,
     provider_health_check,
     _is_cloud_status,
@@ -93,13 +93,13 @@ from api.health import (
     _public_cloud_health_controls,
     _public_provider_group,
 )
-from api.deployment_config import router as deployment_config_router
-from api.privacy_audit import router as privacy_audit_router
-from api.connectors_webhook import router as connectors_webhook_router
-from api.admin_newsletter import router as admin_newsletter_router
-from api.intake import intake_body_size_limit, router as intake_router
-from api.newsletter_public import router as newsletter_public_router
-from api.services import (
+from gestaltworkframe.api.deployment_config import router as deployment_config_router
+from gestaltworkframe.api.privacy_audit import router as privacy_audit_router
+from gestaltworkframe.api.connectors_webhook import router as connectors_webhook_router
+from gestaltworkframe.api.admin_newsletter import router as admin_newsletter_router
+from gestaltworkframe.api.intake import intake_body_size_limit, router as intake_router
+from gestaltworkframe.api.newsletter_public import router as newsletter_public_router
+from gestaltworkframe.api.services import (
     AppServices,
     ChatMetrics,
     build_app_services,
@@ -145,7 +145,7 @@ from gestaltworkframe.core.discovery_summary import summarize_discovery_finds
 from gestaltworkframe.core.router import ROUTING_STRATEGIES
 # Backward-compat: tests historically reached for `api.main.clean_intake_text`.
 # The implementation now lives wherever the consumer needs it; re-export here.
-from api.chat import clean_intake_text  # noqa: F401
+from gestaltworkframe.api.chat import clean_intake_text  # noqa: F401
 from gestaltworkframe.kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
 from gestaltworkframe.kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
 from gestaltworkframe.mcp_servers.kb_server import vectorstore_document_count
@@ -167,8 +167,8 @@ STATE_CHANGING_PUBLIC_PATHS = {
 DEFAULT_CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
 
 # ADMIN_HANDOFF_LIMIT, DEFAULT_CLOUD_INPUT_TOKEN_CAP, DEFAULT_CLOUD_OUTPUT_TOKEN_CAP
-# are re-exported from api.admin. DISCOVERY_RUN_ONCE_MIN_INTERVAL_SECONDS and the
-# scheduler-trigger lock are re-exported from api.admin_discovery.
+# are re-exported from gestaltworkframe.api.admin. DISCOVERY_RUN_ONCE_MIN_INTERVAL_SECONDS and the
+# scheduler-trigger lock are re-exported from gestaltworkframe.api.admin_discovery.
 
 
 def _parse_allowed_origins(raw: str) -> tuple[str, ...]:
@@ -187,7 +187,7 @@ CORS_ALLOWED_ORIGINS = _parse_allowed_origins(os.getenv("CORS_ALLOWED_ORIGINS", 
 # ChatMetrics, AppServices, build_app_services, get_app_services,
 # require_admin_token, and the loopback / enabled-cost-tiers helpers all live
 # in api/services.py. They are re-exported above for backward compatibility
-# with `import api.main as api_main` consumers.
+# with `import gestaltworkframe.api.main as api_main` consumers.
 _enabled_cost_tiers = enabled_cost_tiers
 
 

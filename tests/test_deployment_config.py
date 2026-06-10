@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 import pytest
 
-from api.main import app
+from gestaltworkframe.api.main import app
 from gestaltworkframe.core.deployment_config import DeploymentConfig, get_deployment_config, reload_deployment_config
 import gestaltworkframe.core.deployment_config as deployment_config_mod
 

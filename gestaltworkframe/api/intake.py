@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.request_helpers import client_ip, make_body_size_limit
+from gestaltworkframe.api.request_helpers import client_ip, make_body_size_limit
 from gestaltworkframe.core.db import TerminalIntakeRecord, get_session, save_terminal_intake_submission
 
 # Re-export for api/main.py which imports clean_text and client_ip from this module.

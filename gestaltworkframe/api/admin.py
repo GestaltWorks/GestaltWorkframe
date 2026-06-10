@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel  # noqa: F401  - keep sqlmodel imported alongside select for parity
 
-from api.services import AppServices, enabled_cost_tiers, get_app_services, require_admin_token
+from gestaltworkframe.api.services import AppServices, enabled_cost_tiers, get_app_services, require_admin_token
 from gestaltworkframe.core.key_store import ApiKeyStore, _PROVIDER_ENV_VARS as _KEY_STORE_PROVIDER_ENV_VARS
 from gestaltworkframe.core.key_validation_monitor import KeyValidationMonitor
 from gestaltworkframe.core.rate_limiter import get_key_store_rate_limiter

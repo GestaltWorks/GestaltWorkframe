@@ -6,7 +6,7 @@ streaming SSE handler that ties them together. It does NOT own the routing
 decision, the model providers, the cloud budget, or the persistence layer.
 Those collaborators come in through `AppServices` and the `core/db` helpers.
 
-The module is split out from api/main.py to keep the FastAPI app entry point
+The module is split out from gestaltworkframe/api/main.py to keep the FastAPI app entry point
 focused on application construction. Backward-compat re-exports in api/main.py
 preserve the historical import surface (`api.main.chat_stream`,
 `api.main.ChatRequest`, etc.) so tests and external code continue to work.
@@ -32,8 +32,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.request_helpers import client_ip, make_body_size_limit
-from api.services import AppServices, get_app_services
+from gestaltworkframe.api.request_helpers import client_ip, make_body_size_limit
+from gestaltworkframe.api.services import AppServices, get_app_services
 from gestaltworkframe.core.db import (
     add_chat_usage_event,
     add_chat_usage_event_in_new_session,

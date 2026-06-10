@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import api.main as api_main
+import gestaltworkframe.api.main as api_main
 from gestaltworkframe.core.policy import CloudSpendPolicy
 from gestaltworkframe.core.router import LLMRouter
 

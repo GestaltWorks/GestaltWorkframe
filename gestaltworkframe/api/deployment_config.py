@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from api.services import require_admin_token
+from gestaltworkframe.api.services import require_admin_token
 from gestaltworkframe.core.deployment_config import get_deployment_config
 
 

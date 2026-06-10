@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
-from api import contact
+from gestaltworkframe.api import contact
 from gestaltworkframe.core.db import ContactNotificationRecord, ContactRecord
 
 
@@ -168,7 +168,7 @@ async def test_contact_notification_failure_is_logged_without_failing_submission
 
     app, maker, engine, _ = await _test_app(tmp_path, monkeypatch, fail_notification)
     transport = httpx.ASGITransport(app=app)
-    caplog.set_level(logging.WARNING, logger="api.contact")
+    caplog.set_level(logging.WARNING, logger="gestaltworkframe.api.contact")
 
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

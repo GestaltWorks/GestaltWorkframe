@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from api.services import AppServices, get_app_services
+from gestaltworkframe.api.services import AppServices, get_app_services
 
 
 router = APIRouter(tags=["health"])

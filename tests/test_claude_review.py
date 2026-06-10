@@ -114,7 +114,7 @@ def test_codebase_snapshot_includes_reviewable_files(monkeypatch, tmp_path):
 
 def test_codebase_snapshot_prioritizes_command_control_files(monkeypatch, tmp_path):
     review = _module()
-    for path in ["core/router.py", "api/main.py", "llm/control_local_model.ps1", "tests/test_api_main.py"]:
+    for path in ["core/router.py", "gestaltworkframe/api/main.py", "llm/control_local_model.ps1", "tests/test_api_main.py"]:
         target = tmp_path / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(path, encoding="utf-8")
@@ -122,12 +122,12 @@ def test_codebase_snapshot_prioritizes_command_control_files(monkeypatch, tmp_pa
     monkeypatch.setattr(
         review,
         "run_git",
-        lambda args: "core/router.py\napi/main.py\nllm/control_local_model.ps1\ntests/test_api_main.py\n",
+        lambda args: "core/router.py\ngestaltworkframe/api/main.py\nllm/control_local_model.ps1\ntests/test_api_main.py\n",
     )
 
     snapshot = review.codebase_snapshot()
 
-    assert snapshot.index("--- FILE: api/main.py ---") < snapshot.index("--- FILE: core/router.py ---")
+    assert snapshot.index("--- FILE: gestaltworkframe/api/main.py ---") < snapshot.index("--- FILE: core/router.py ---")
     assert snapshot.index("--- FILE: llm/control_local_model.ps1 ---") < snapshot.index("--- FILE: core/router.py ---")
 
 

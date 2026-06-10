@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from gestalt_connector_protocol import Document, Privacy, SourceMetadata
 
-from api.privacy_audit import privacy_audit_payload
+from gestaltworkframe.api.privacy_audit import privacy_audit_payload
 from gestaltworkframe.core.db import DiscoveryFind
 
 

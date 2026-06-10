@@ -19,7 +19,7 @@ ALLOW_PATTERNS = [
     "*.toml", "*.json", "*.ps1", "web/**/*.ts", "web/**/*.tsx", ".github/**/*.yml",
 ]
 PRIORITY_PATTERNS = [
-    "api/main.py", "llm/*.ps1", "llm/profiles.json",
+    "gestaltworkframe/api/main.py", "llm/*.ps1", "llm/profiles.json",
     ".github/workflows/*.yml", ".github/scripts/*.py",
     "tests/test_api_main.py", "claude.md", "README.md", "objectives.md",
 ]

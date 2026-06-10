@@ -879,7 +879,7 @@ Type=simple
 User=${RUN_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=-${APP_DIR}/.env
-ExecStart=${APP_DIR}/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port ${API_PORT}
+ExecStart=${APP_DIR}/.venv/bin/uvicorn gestaltworkframe.api.main:app --host 127.0.0.1 --port ${API_PORT}
 Restart=always
 RestartSec=5
 
