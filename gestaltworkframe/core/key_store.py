@@ -38,7 +38,7 @@ import logging
 import os
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiosqlite
@@ -409,7 +409,7 @@ class ApiKeyStore:
         await self.init()
         if not self._ready:
             return []
-        since = datetime.now(timezone.utc).replace(hour=datetime.now(timezone.utc).hour - hours).isoformat()
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
         try:
             async with aiosqlite.connect(self._path) as db:
                 if provider_id and operation:
@@ -453,7 +453,7 @@ class ApiKeyStore:
         await self.init()
         if not self._ready:
             return 0
-        cutoff = datetime.now(timezone.utc).replace(day=datetime.now(timezone.utc).day - days).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         try:
             async with aiosqlite.connect(self._path) as db:
                 cursor = await db.execute(

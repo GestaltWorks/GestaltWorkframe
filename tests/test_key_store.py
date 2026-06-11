@@ -36,6 +36,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
 import gestaltworkframe.api.main as api_main
+import gestaltworkframe.core.key_store as key_store_module
 from gestaltworkframe.core.key_store import ApiKeyStore
 
 
@@ -145,6 +146,211 @@ async def test_upsert_overwrites_existing_key(store):
     await store.set_key("openrouter", "new-key", "tok")
     result = await store.get_key("openrouter", "tok")
     assert result == "new-key"
+
+
+# ---------------------------------------------------------------------------
+# Not-ready / error-path coverage
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def broken_store(tmp_path):
+    """A store whose backing path can never be opened, so init() always fails."""
+    return ApiKeyStore(str(tmp_path / "missing-dir" / "keys.db"))
+
+
+@pytest.mark.asyncio
+async def test_init_failure_leaves_store_not_ready(broken_store):
+    await broken_store.init()
+    assert broken_store._ready is False
+
+
+@pytest.mark.asyncio
+async def test_has_key_returns_false_when_not_ready(broken_store):
+    assert await broken_store.has_key("openrouter") is False
+
+
+@pytest.mark.asyncio
+async def test_get_key_returns_none_when_not_ready(broken_store):
+    assert await broken_store.get_key("openrouter", "tok") is None
+
+
+@pytest.mark.asyncio
+async def test_set_key_returns_false_when_not_ready(broken_store):
+    assert await broken_store.set_key("openrouter", "sk-or", "tok") is False
+
+
+@pytest.mark.asyncio
+async def test_delete_key_returns_false_when_not_ready(broken_store):
+    assert await broken_store.delete_key("openrouter") is False
+
+
+@pytest.mark.asyncio
+async def test_has_key_handles_db_error(store, monkeypatch):
+    def broken_connect(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(key_store_module.aiosqlite, "connect", broken_connect)
+
+    assert await store.has_key("openrouter") is False
+
+
+@pytest.mark.asyncio
+async def test_get_key_handles_db_error(store, monkeypatch):
+    def broken_connect(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(key_store_module.aiosqlite, "connect", broken_connect)
+
+    assert await store.get_key("openrouter", "tok") is None
+
+
+@pytest.mark.asyncio
+async def test_set_key_handles_db_error(store, monkeypatch):
+    def broken_connect(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(key_store_module.aiosqlite, "connect", broken_connect)
+
+    assert await store.set_key("openrouter", "sk-or", "tok") is False
+
+
+@pytest.mark.asyncio
+async def test_delete_key_handles_db_error(store, monkeypatch):
+    await store.set_key("openrouter", "sk-or", "tok")
+
+    def broken_connect(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(key_store_module.aiosqlite, "connect", broken_connect)
+
+    assert await store.delete_key("openrouter") is False
+
+
+# ---------------------------------------------------------------------------
+# Sync helpers
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_has_key_sync_and_get_key_sync(store):
+    assert store.has_key_sync("openrouter") is False
+    assert store.get_key_sync("openrouter", "tok") is None
+
+    await store.set_key("openrouter", "sk-or-sync", "tok")
+
+    assert store.has_key_sync("openrouter") is True
+    assert store.get_key_sync("openrouter", "tok") == "sk-or-sync"
+    assert store.get_key_sync("openrouter", "wrong-tok") is None
+
+
+def test_has_key_sync_and_get_key_sync_handle_missing_table(tmp_path):
+    s = ApiKeyStore(str(tmp_path / "no-table.db"))
+    assert s.has_key_sync("openrouter") is False
+    assert s.get_key_sync("openrouter", "tok") is None
+
+
+# ---------------------------------------------------------------------------
+# list_keys / export_encrypted / import_encrypted
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_list_keys_empty_and_populated(store):
+    assert await store.list_keys() == []
+
+    await store.set_key("openrouter", "sk-or", "tok")
+    await store.set_key("anthropic", "sk-ant", "tok")
+
+    keys = await store.list_keys()
+    provider_ids = {k["provider_id"] for k in keys}
+    assert provider_ids == {"anthropic", "openrouter"}
+    assert all({"salt", "nonce", "ciphertext", "updated_at"} <= k.keys() for k in keys)
+
+
+@pytest.mark.asyncio
+async def test_list_keys_returns_empty_when_not_ready(broken_store):
+    assert await broken_store.list_keys() == []
+
+
+@pytest.mark.asyncio
+async def test_export_encrypted_round_trips_into_new_store(tmp_path, store):
+    await store.set_key("openrouter", "sk-or", "tok")
+
+    manifest = await store.export_encrypted()
+
+    assert manifest["version"] == 1
+    assert manifest["key_count"] == 1
+    assert manifest["keys"][0]["provider_id"] == "openrouter"
+
+    other = ApiKeyStore(str(tmp_path / "other.db"))
+    await other.init()
+    imported, skipped = await other.import_encrypted(manifest, "tok")
+
+    assert imported == 1
+    assert skipped == 0
+    assert await other.get_key("openrouter", "tok") == "sk-or"
+
+
+@pytest.mark.asyncio
+async def test_import_encrypted_returns_zero_when_not_ready(broken_store):
+    imported, skipped = await broken_store.import_encrypted({"keys": []}, "tok")
+    assert (imported, skipped) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_import_encrypted_handles_malformed_entry(store):
+    manifest = {"keys": [{"provider_id": "broken"}]}
+
+    imported, skipped = await store.import_encrypted(manifest, "tok")
+
+    assert imported == 0
+    assert skipped == 0
+    assert await store.has_key("broken") is False
+
+
+# ---------------------------------------------------------------------------
+# Audit log
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_audit_log_records_operations_and_filters(store):
+    await store.set_key("openrouter", "sk-or", "tok")
+    await store.get_key("openrouter", "tok")
+    await store.get_key("openrouter", "wrong-tok")
+    await store.has_key("anthropic")
+
+    all_entries = await store.get_audit_log()
+    assert len(all_entries) >= 4
+
+    by_provider = await store.get_audit_log(provider_id="openrouter")
+    assert by_provider
+    assert all(e["provider_id"] == "openrouter" for e in by_provider)
+
+    by_op = await store.get_audit_log(operation="get")
+    assert by_op
+    assert all(e["operation"] == "get" for e in by_op)
+
+    by_both = await store.get_audit_log(provider_id="openrouter", operation="get")
+    assert by_both
+    assert all(e["provider_id"] == "openrouter" and e["operation"] == "get" for e in by_both)
+    assert any(e["success"] is False for e in by_both)
+
+
+@pytest.mark.asyncio
+async def test_get_audit_log_returns_empty_when_not_ready(broken_store):
+    assert await broken_store.get_audit_log() == []
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_audit_logs_removes_nothing_for_recent_data(store):
+    await store.set_key("openrouter", "sk-or", "tok")
+
+    deleted = await store.cleanup_old_audit_logs(days=30)
+
+    assert deleted == 0
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_audit_logs_returns_zero_when_not_ready(broken_store):
+    assert await broken_store.cleanup_old_audit_logs() == 0
 
 
 # ---------------------------------------------------------------------------
