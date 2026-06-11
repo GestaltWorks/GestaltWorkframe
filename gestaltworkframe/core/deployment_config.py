@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from urllib.parse import urlparse
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +36,13 @@ class IdentityConfig(BaseModel):
     signature_name: str = "the team"
     contact_path: str = "/contact"
     library_path: str = "/library"
+    booking_url: str = ""
+    community_url: str = ""
+
+    @field_validator("booking_url", "community_url", mode="after")
+    @classmethod
+    def _validate_external_url(cls, value: str) -> str:
+        return _safe_external_url(value)
 
 
 class SiteConfig(BaseModel):
@@ -236,6 +245,23 @@ def _public_copy(value: Any) -> Any:
     if isinstance(value, list):
         return [_public_copy(item) for item in value]
     return value
+
+
+def _safe_external_url(value: str) -> str:
+    """Return value only if it is a syntactically valid http/https URL.
+
+    External CTA URLs (booking, community) are operator-authored and rendered
+    into emails and pages. Reject anything that is not http/https with a netloc
+    so a malformed or hostile bundle value (javascript:, data:, etc.) collapses
+    to empty string instead of reaching output.
+    """
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return ""
+    parsed = urlparse(cleaned)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return cleaned
+    return ""
 
 
 def _public_newsletter(value: NewsletterConfig) -> dict[str, Any]:

@@ -2,7 +2,13 @@ from fastapi.testclient import TestClient
 import pytest
 
 from gestaltworkframe.api.main import app
-from gestaltworkframe.core.deployment_config import DeploymentConfig, get_deployment_config, reload_deployment_config
+from gestaltworkframe.core.deployment_config import (
+    DeploymentConfig,
+    IdentityConfig,
+    _safe_external_url,
+    get_deployment_config,
+    reload_deployment_config,
+)
 import gestaltworkframe.core.deployment_config as deployment_config_mod
 
 
@@ -54,6 +60,63 @@ def test_admin_payload_redacts_connector_auth_fields():
 
     assert payload["connectors"][0]["auth"] == "[REDACTED]"
     assert payload["connectors"][0]["settings"]["base_url"] == "https://example.com"
+
+
+# ---------------------------------------------------------------------------
+# External CTA URL validation (booking_url / community_url)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://book.example.com/slot",
+        "http://community.example.com",
+        "https://example.com/path?q=1#frag",
+    ],
+)
+def test_safe_external_url_accepts_valid_http_urls(value):
+    assert _safe_external_url(value) == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "vbscript:msgbox(1)",
+        "file:///etc/passwd",
+        "//example.com",          # scheme-relative, no scheme
+        "ftp://example.com",      # non-http scheme
+        "https://",               # scheme but no netloc
+        "not a url",
+        "mailto:hi@example.com",
+    ],
+)
+def test_safe_external_url_rejects_unsafe_values(value):
+    assert _safe_external_url(value) == ""
+
+
+def test_safe_external_url_handles_empty_and_whitespace():
+    assert _safe_external_url("") == ""
+    assert _safe_external_url("   ") == ""
+    # Surrounding whitespace on a valid URL is stripped and accepted.
+    assert _safe_external_url("  https://example.com  ") == "https://example.com"
+
+
+def test_identity_config_validator_collapses_hostile_urls():
+    identity = IdentityConfig(
+        booking_url="javascript:alert(document.cookie)",
+        community_url="https://discord.gg/example",
+    )
+    # The hostile booking_url is collapsed before it can reach emails/pages.
+    assert identity.booking_url == ""
+    assert identity.community_url == "https://discord.gg/example"
+
+
+def test_identity_config_defaults_external_urls_to_empty():
+    identity = IdentityConfig()
+    assert identity.booking_url == ""
+    assert identity.community_url == ""
 
 
 def test_deployment_root_rejects_symlink_escape(tmp_path, monkeypatch):

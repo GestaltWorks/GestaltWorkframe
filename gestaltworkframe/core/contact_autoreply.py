@@ -65,11 +65,17 @@ def _public_email() -> str:
 
 
 def _community_url() -> str:
-    return os.getenv("COMMUNITY_INVITE_URL", _PLACEHOLDER_COMMUNITY)
+    override = os.getenv("COMMUNITY_INVITE_URL", "").strip()
+    if override:
+        return override
+    return get_deployment_config().identity.community_url or _PLACEHOLDER_COMMUNITY
 
 
 def _booking_url() -> str:
-    return os.getenv("BOOKING_URL", _PLACEHOLDER_BOOKING)
+    override = os.getenv("BOOKING_URL", "").strip()
+    if override:
+        return override
+    return get_deployment_config().identity.booking_url or _PLACEHOLDER_BOOKING
 
 
 def _unsubscribe_url(token: str) -> str:
