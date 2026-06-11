@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 from gestaltworkframe.core.model_profile import ProfileStore
 from gestaltworkframe.core.provider_registry import LocalProviderProfile, ProviderRegistry, SecondaryProviderProfile, _local_profile_base_url
-from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OllamaProvider, OpenAICompatibleProvider
+from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OpenAICompatibleProvider
 
 
 def _registry(env: dict) -> ProviderRegistry:
@@ -16,15 +16,6 @@ def test_default_profile_builds_local_provider():
     reg = ProviderRegistry()
     provider = reg.build_primary()
     assert isinstance(provider, LocalProvider)
-
-
-def test_ollama_type_builds_ollama_provider():
-    reg = ProviderRegistry(
-        primary=LocalProviderProfile(type="ollama", ollama_base_url="http://localhost:11434", model="llama3")
-    )
-    provider = reg.build_primary()
-    assert isinstance(provider, OllamaProvider)
-    assert provider.model == "llama3"
 
 
 def test_local_provider_url_and_model_passed_through():
@@ -64,38 +55,15 @@ def test_secondary_builds_claude_provider_when_enabled():
     assert provider.provider_role == "secondary"
 
 
-def test_from_env_reads_llama_cpp():
+def test_from_env_reads_local_settings():
     reg = _registry({
-        "LOCAL_LLM_PROVIDER": "llama_cpp",
         "LOCAL_LLM_BASE_URL": "http://localhost:9090/v1",
         "LOCAL_LLM_MODEL": "my-model",
         "ENABLE_CLAUDE_FALLBACK": "0",
     })
-    assert reg.primary_profile.type == "llama_cpp"
     assert reg.primary_profile.model == "my-model"
+    assert reg.primary_profile.base_url == "http://localhost:9090/v1"
     assert reg.secondary_profile.enabled is False
-
-
-def test_from_env_reads_ollama():
-    reg = _registry({
-        "LOCAL_LLM_PROVIDER": "ollama",
-        "OLLAMA_BASE_URL": "http://localhost:11434",
-        "LOCAL_LLM_MODEL": "qwen2.5-coder:7b",
-        "ENABLE_CLAUDE_FALLBACK": "0",
-    })
-    assert reg.primary_profile.type == "ollama"
-    provider = reg.build_primary()
-    assert isinstance(provider, OllamaProvider)
-
-
-def test_from_env_invalid_local_provider_falls_back_to_llama_cpp():
-    reg = _registry({
-        "LOCAL_LLM_PROVIDER": "not-real",
-        "LOCAL_LLM_MODEL": "my-model",
-        "ENABLE_CLAUDE_FALLBACK": "0",
-    })
-
-    assert reg.primary_profile.type == "llama_cpp"
     assert isinstance(reg.build_primary(), LocalProvider)
 
 

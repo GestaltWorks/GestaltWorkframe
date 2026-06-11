@@ -323,14 +323,12 @@ for r in conn.execute('SELECT created_at, role, name, email, data FROM contactre
 |---|---|---|
 | `CORS_ALLOWED_ORIGINS` | No | Comma-separated browser origins allowed by FastAPI. Defaults to `http://localhost:3000`. |
 | `LOCAL_LLM_PROFILE` | No | Profile name from `llm/profiles.json` for the primary provider. |
-| `LOCAL_LLM_PROVIDER` | No | Primary provider type when no profile is set: `llama_cpp` or `ollama`. |
-| `LOCAL_LLM_BASE_URL` | No | llama.cpp OpenAI-compatible endpoint. Defaults to `http://localhost:8080/v1`. |
+| `LOCAL_LLM_BASE_URL` | No | OpenAI-compatible endpoint for the local provider. Works with any server that speaks OpenAI's `/v1/chat/completions` protocol: llama.cpp (`llama-server`), vLLM, Ollama (point at `http://localhost:11434/v1`), LM Studio, TGI, etc. Defaults to `http://localhost:8080/v1`. |
 | `LOCAL_LLM_MODEL` | No | Local model name passed to the OpenAI-compatible endpoint. |
 | `LOCAL_LLM_START_COMMAND` | No | Admin-only local runtime start command executed by the VPS API process. Usually an SSH command over WireGuard to the GPU host. Supports `{action}` and `{route}` template variables. |
 | `LOCAL_LLM_STOP_COMMAND` | No | Admin-only local runtime stop command executed by the VPS API process. Usually an SSH command over WireGuard to the GPU host. Supports `{action}` and `{route}` template variables. |
 | `LOCAL_LLM_CONTROL_TIMEOUT_SECONDS` | No | Timeout for local runtime control commands. Defaults to `20`. |
 | `LOCAL_LLM_CONTROL_CWD` | No | Optional working directory for local runtime control commands. |
-| `OLLAMA_BASE_URL` | No | Ollama endpoint when `LOCAL_LLM_PROVIDER=ollama`. |
 | `LLM_PROFILES_PATH` | No | Override path for model profile JSON. |
 | `LLM_PROFILES_STRICT` | No | Set to `1` to fail startup when profile JSON/schema loading fails. Defaults to logging the error and continuing with no loaded profile routes. |
 | `GEMINI_CLOUD_BASE_URL` | No | Google AI Studio OpenAI-compatible cloud base URL for the Gemini cloud route. Production deploy sets `https://generativelanguage.googleapis.com/v1beta/openai`. |
