@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from gestaltworkframe.core.model_profile import GenerationParams, ModelProfile, ProfileStore
 from gestaltworkframe.core.provider_registry import ProviderRegistry, SecondaryProviderProfile
-from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OllamaProvider
+from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider
 
 ROOT = Path(__file__).parents[1]
 
@@ -20,16 +20,6 @@ _FIXTURE = {
             "allowed_response_policies": ["local_only"],
             "params": {"temperature": 0.5, "max_tokens": 1024, "top_p": 0.8},
             "description": "Test local profile",
-        },
-        "test-ollama": {
-            "provider": "ollama",
-            "model": "test-ollama-model",
-            "base_url": "http://localhost:11434",
-            "role": "primary",
-            "cost_tier": "local",
-            "allowed_response_policies": ["local_only"],
-            "params": {"temperature": 0.2, "max_tokens": 512, "top_p": 0.9},
-            "description": "Test Ollama profile",
         },
         "test-claude": {
             "provider": "claude",
@@ -82,11 +72,11 @@ def store(tmp_path: Path) -> ProfileStore:
 
 
 def test_store_loads_all_profiles(store: ProfileStore):
-    assert set(store.names()) == {"test-local", "test-ollama", "test-claude", "test-sonnet", "test-opus"}
+    assert set(store.names()) == {"test-local", "test-claude", "test-sonnet", "test-opus"}
 
 
 def test_store_exposes_profiles_for_provider_pool(store: ProfileStore):
-    assert {profile.name for profile in store.profiles()} == {"test-local", "test-ollama", "test-claude", "test-sonnet", "test-opus"}
+    assert {profile.name for profile in store.profiles()} == {"test-local", "test-claude", "test-sonnet", "test-opus"}
 
 
 def test_store_returns_none_for_unknown_profile(store: ProfileStore):
@@ -172,33 +162,12 @@ def test_registry_uses_profile_params_for_local(store: ProfileStore, tmp_path: P
     assert provider.params.temperature == 0.5
 
 
-def test_registry_uses_profile_params_for_ollama(tmp_path: Path):
-    profiles_path = tmp_path / "profiles.json"
-    profiles_path.write_text(json.dumps(_FIXTURE), encoding="utf-8")
-
-    env = {
-        "LOCAL_LLM_PROFILE": "test-ollama",
-        "ENABLE_CLAUDE_FALLBACK": "0",
-        "LLM_PROFILES_PATH": str(profiles_path),
-    }
-    with patch.dict("os.environ", env, clear=False):
-        from gestaltworkframe.core import model_profile
-        model_profile._default_store = ProfileStore(path=profiles_path)
-        reg = ProviderRegistry.from_env()
-
-    provider = reg.build_primary()
-    assert isinstance(provider, OllamaProvider)
-    assert provider.params.temperature == 0.2
-    assert provider.params.max_tokens == 512
-
-
 def test_registry_falls_back_to_raw_env_when_no_profile(tmp_path: Path):
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text(json.dumps(_FIXTURE), encoding="utf-8")
 
     env = {
         "LOCAL_LLM_PROFILE": "",
-        "LOCAL_LLM_PROVIDER": "llama_cpp",
         "LOCAL_LLM_MODEL": "raw-env-model",
         "ENABLE_CLAUDE_FALLBACK": "0",
     }

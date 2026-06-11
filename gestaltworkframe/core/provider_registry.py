@@ -3,7 +3,7 @@ from urllib.parse import urlparse, urlunparse
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 from gestaltworkframe.core.model_profile import GenerationParams, ModelProfile, ProfileStore, get_default_store
-from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, LLMProvider, OllamaProvider, OpenAICompatibleProvider
+from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, LLMProvider, OpenAICompatibleProvider
 from gestaltworkframe.core.router import ProviderRoute
 
 _OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
@@ -44,14 +44,9 @@ def _local_profile_base_url(profile_url: str) -> str:
     return override
 
 
-def _env_local_provider() -> Literal["llama_cpp", "ollama"]:
-    provider = _env_text("LOCAL_LLM_PROVIDER", "llama_cpp").lower()
-    return "ollama" if provider == "ollama" else "llama_cpp"
-
-
 class LocalProviderProfile(BaseModel):
     name: str = "env-local"
-    type: Literal["llama_cpp", "ollama"] = "llama_cpp"
+    type: Literal["llama_cpp"] = "llama_cpp"
     role: Literal["primary"] = "primary"
     cost_tier: Literal["local"] = "local"
     deployment_status: Literal["active", "candidate", "disabled"] = "active"
@@ -59,7 +54,6 @@ class LocalProviderProfile(BaseModel):
     enabled_by_default: bool = True
     allowed_response_policies: list[str] = Field(default_factory=lambda: ["local_only"])
     base_url: str = "http://localhost:8080/v1"
-    ollama_base_url: str = "http://localhost:11434"
     model: str = "local-model"
     timeout: float = 30.0
     params: GenerationParams = Field(default_factory=GenerationParams)
@@ -122,15 +116,13 @@ class ProviderRegistry:
         if primary_profile_name and (mp := store.get(primary_profile_name)):
             primary = LocalProviderProfile(
                 name=mp.name,
-                type=mp.provider,  # type: ignore[arg-type]
                 role="primary",
                 cost_tier="local",
                 deployment_status=mp.deployment_status,
                 runtime_group=mp.runtime_group or "personal_gpu",
                 enabled_by_default=mp.route_enabled_by_default(),
                 allowed_response_policies=mp.allowed_response_policies,
-                base_url=mp.base_url if mp.provider == "llama_cpp" else "http://localhost:8080/v1",
-                ollama_base_url=mp.base_url if mp.provider == "ollama" else "http://localhost:11434",
+                base_url=mp.base_url or "http://localhost:8080/v1",
                 model=mp.model,
                 params=mp.params,
                 capabilities=mp.capabilities,
@@ -139,9 +131,7 @@ class ProviderRegistry:
         else:
             primary = LocalProviderProfile(
                 name="env-local",
-                type=_env_local_provider(),
                 base_url=_env_text("LOCAL_LLM_BASE_URL", "http://localhost:8080/v1"),
-                ollama_base_url=_env_text("OLLAMA_BASE_URL", "http://localhost:11434"),
                 model=_env_text("LOCAL_LLM_MODEL", "local-model"),
             )
 
@@ -176,7 +166,7 @@ class ProviderRegistry:
         routes = [
             self._route_from_local_profile(profile)
             for profile in self.store.profiles()
-            if profile.provider in {"llama_cpp", "ollama"}
+            if profile.provider == "llama_cpp"
         ]
         routes.extend(
             self._route_from_openai_compatible_profile(profile)
@@ -203,10 +193,7 @@ class ProviderRegistry:
 
     def build_primary(self) -> LLMProvider:
         p = self.primary_profile
-        if p.type == "ollama":
-            provider = OllamaProvider(base_url=p.ollama_base_url, model=p.model, params=p.params)
-        else:
-            provider = LocalProvider(base_url=p.base_url, model=p.model, params=p.params)
+        provider = LocalProvider(base_url=p.base_url, model=p.model, params=p.params)
         self._attach_profile(provider, p)
         return provider
 
@@ -227,18 +214,11 @@ class ProviderRegistry:
         provider.tool_calling_quality = profile.tool_calling_quality  # type: ignore[attr-defined]
 
     def _route_from_local_profile(self, profile: ModelProfile) -> ProviderRoute:
-        if profile.provider == "ollama":
-            provider = OllamaProvider(
-                base_url=_env_text("OLLAMA_BASE_URL", profile.base_url or "http://localhost:11434"),
-                model=profile.model,
-                params=profile.params,
-            )
-        else:
-            provider = LocalProvider(
-                base_url=_local_profile_base_url(profile.base_url),
-                model=profile.model,
-                params=profile.params,
-            )
+        provider = LocalProvider(
+            base_url=_local_profile_base_url(profile.base_url),
+            model=profile.model,
+            params=profile.params,
+        )
         self._attach_model_profile(provider, profile)
         return self._route_from_model_profile(profile, provider, configured=True)
 

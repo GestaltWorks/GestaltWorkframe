@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from gestaltworkframe.core.model_profile import GenerationParams
-from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OllamaProvider, OpenAICompatibleProvider, _openai_tools
+from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, OpenAICompatibleProvider, _openai_tools
 
 
 def _tool():
@@ -89,35 +89,6 @@ async def test_local_stream_chat_uses_max_tokens_override():
 
     assert chunks
     assert b'"max_tokens":456' in seen["payload"]
-
-
-@pytest.mark.asyncio
-async def test_ollama_stream_chat_yields_message_content_and_options():
-    seen = {}
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        seen["payload"] = request.read()
-        body = b'{"message":{"content":"hel"},"done":false}\n{"message":{"content":"lo"},"done":false}\n{"done":true}\n'
-        return httpx.Response(200, content=body)
-
-    provider = OllamaProvider(
-        base_url="http://test",
-        model="llama3",
-        params=GenerationParams(temperature=0.2, max_tokens=123, top_p=0.9, stop=["STOP"]),
-    )
-    provider.client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://test")
-
-    try:
-        chunks = [chunk async for chunk in provider.stream_chat([{"role": "user", "content": "hi"}], tools=[_tool()], max_tokens=456)]
-    finally:
-        await provider.close()
-
-    assert chunks == ["hel", "lo"]
-    payload = seen["payload"].decode()
-    assert '"stream":true' in payload
-    assert '"num_predict":456' in payload
-    assert '"stop":["STOP"]' in payload
-    assert '"lookup"' in payload
 
 
 @pytest.mark.asyncio

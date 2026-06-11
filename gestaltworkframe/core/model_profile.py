@@ -24,7 +24,7 @@ class ModelEvidence(BaseModel):
 
 class ModelProfile(BaseModel):
     name: str
-    provider: Literal["llama_cpp", "ollama", "claude", "openai_compatible", "openrouter"]
+    provider: Literal["llama_cpp", "claude", "openai_compatible", "openrouter"]
     model: str
     base_url: str = ""
     model_env: str = ""
