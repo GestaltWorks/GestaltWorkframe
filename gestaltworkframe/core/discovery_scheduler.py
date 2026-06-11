@@ -42,6 +42,7 @@ from gestaltworkframe.core.discovery_handlers import (
     get_handler,
     registered_watch_types,
 )
+from gestaltworkframe.kb.target_safety import build_guarded_async_client
 from gestaltworkframe.kb.watchlist import WatchedSource, refresh_seconds, validate_watchlist
 from gestaltworkframe.kb.watchlist_seed import WATCHLIST_SEED
 
@@ -229,7 +230,7 @@ async def run_one_pass(
     total_repeat = 0
 
     owns_client = http_client is None
-    client = http_client or httpx.AsyncClient(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
+    client = http_client or build_guarded_async_client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
     try:
         poll_jobs: list[asyncio.Task[tuple[DiscoverySource, PollResult | None, str]]] = []
         semaphore = asyncio.Semaphore(max(1, poll_concurrency))

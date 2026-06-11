@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import socket
 from urllib.parse import urlparse
+
+import httpx
 
 GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 GITHUB_TOPIC_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,80}$")
@@ -89,3 +92,90 @@ def validate_discovery_target(watch_type: str, target: str, *, source_name: str)
             raise ValueError(f"{source_name} target must be a saved search query")
         return
     raise ValueError(f"{source_name} has no target validator for watch_type={watch_type!r}")
+
+
+# ---------------------------------------------------------------------------
+# Connect-time SSRF guard
+#
+# ``validate_public_https_url`` runs at insert and fetch time, but it can only
+# reason about literal IPs. A public *hostname* whose DNS record points at an
+# internal address (169.254.169.254, 127.0.0.1, 10.0.0.0/8, ...) passes that
+# check and the process then fetches internal infrastructure. The guard below
+# resolves the host and refuses any request whose destination is non-global.
+# Wired in as an httpx transport, it validates every redirect hop too, so a
+# public URL that 30x-redirects to an internal address is also refused before
+# the socket is opened.
+# ---------------------------------------------------------------------------
+
+
+def _address_is_global(ip_text: str) -> bool:
+    try:
+        return ipaddress.ip_address(ip_text).is_global
+    except ValueError:
+        return False
+
+
+def _default_resolver(host: str) -> list[str]:
+    """Resolve ``host`` to its A/AAAA addresses. Replaceable in tests."""
+    infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    return [info[4][0] for info in infos]
+
+
+# Module-level indirection so tests can simulate hostile DNS without network.
+resolve_host_addresses = _default_resolver
+
+
+def assert_destination_is_global(host: str, *, source_name: str = "request", field: str = "url host") -> None:
+    """Raise ``ValueError`` if ``host`` resolves to a non-global address.
+
+    A literal IP is checked directly; a hostname is resolved (every returned
+    address must be global). Resolution failure is fail-closed: an unresolvable
+    host is rejected rather than handed to the socket layer.
+    """
+
+    cleaned = (host or "").strip().rstrip(".").lower()
+    if not cleaned:
+        raise ValueError(f"{source_name} {field} is empty")
+    if cleaned in BLOCKED_HOSTS or cleaned.endswith(BLOCKED_SUFFIXES):
+        raise ValueError(f"{source_name} {field} host is not allowed: {cleaned}")
+
+    try:
+        ipaddress.ip_address(cleaned)
+        addresses: list[str] = [cleaned]
+    except ValueError:
+        try:
+            addresses = list(resolve_host_addresses(cleaned))
+        except OSError as exc:
+            raise ValueError(f"{source_name} {field} host could not be resolved: {cleaned}") from exc
+
+    if not addresses:
+        raise ValueError(f"{source_name} {field} host did not resolve: {cleaned}")
+    for ip_text in addresses:
+        if not _address_is_global(ip_text):
+            raise ValueError(
+                f"{source_name} {field} resolves to a non-global address ({ip_text}); refusing internal fetch"
+            )
+
+
+class SsrfGuardTransport(httpx.AsyncBaseTransport):
+    """httpx transport that refuses requests to non-global destinations.
+
+    Validates the host of every request it handles -- including each redirect
+    hop, since httpx re-enters the transport per hop -- before delegating to the
+    wrapped transport.
+    """
+
+    def __init__(self, inner: httpx.AsyncBaseTransport | None = None) -> None:
+        self._inner = inner or httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        assert_destination_is_global(request.url.host, source_name="outbound fetch")
+        return await self._inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
+def build_guarded_async_client(**kwargs) -> httpx.AsyncClient:
+    """Build an ``httpx.AsyncClient`` that refuses internal-network destinations."""
+    return httpx.AsyncClient(transport=SsrfGuardTransport(), **kwargs)
