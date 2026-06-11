@@ -19,6 +19,7 @@ top-level app module.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import ipaddress
 import logging
 import os
@@ -171,15 +172,34 @@ def get_app_services(request: Request) -> AppServices:
     return services
 
 
+def _loopback_dev_admin_enabled() -> bool:
+    """Whether the loopback `local-dev-admin` fallback is explicitly opted in.
+
+    This must be an explicit env opt-in, never merely "the policy token is
+    unset". In production the app sits behind a reverse proxy, so every request
+    arrives from 127.0.0.1 and `_is_loopback_client` is always true; without
+    this gate, a missing `ADMIN_POLICY_TOKEN` would hand admin to any external
+    client presenting the static `local-dev-admin` token.
+    """
+    return os.getenv("ALLOW_LOOPBACK_DEV_ADMIN", "").strip().lower() in {"1", "true", "yes"}
+
+
 def require_admin_token(request: Request, x_admin_token: str | None = Header(default=None)) -> None:
     configured = os.getenv("ADMIN_POLICY_TOKEN", "").strip()
     token = (x_admin_token or "").strip()
     if configured:
-        if token == configured:
+        # Constant-time compare: a plain `==` leaks the token byte-by-byte via
+        # response timing.
+        if token and hmac.compare_digest(token, configured):
             return
         raise HTTPException(status_code=401, detail="Invalid admin token")
 
-    if _is_loopback_client(request) and token == "local-dev-admin":
+    if (
+        _loopback_dev_admin_enabled()
+        and _is_loopback_client(request)
+        and token
+        and hmac.compare_digest(token, "local-dev-admin")
+    ):
         return
     raise HTTPException(status_code=503, detail="Admin policy token is not configured")
 

@@ -296,6 +296,7 @@ def test_admin_token_requires_configured_secret(monkeypatch):
 
 def test_admin_token_allows_local_dev_fallback_when_unconfigured(monkeypatch):
     monkeypatch.delenv("ADMIN_POLICY_TOKEN", raising=False)
+    monkeypatch.setenv("ALLOW_LOOPBACK_DEV_ADMIN", "1")
     request = SimpleNamespace(headers={"host": "localhost:8000"}, client=SimpleNamespace(host="127.0.0.1"))
 
     api_main.require_admin_token(request, x_admin_token="local-dev-admin")
@@ -303,12 +304,41 @@ def test_admin_token_allows_local_dev_fallback_when_unconfigured(monkeypatch):
 
 def test_admin_token_rejects_spoofed_localhost_host_when_unconfigured(monkeypatch):
     monkeypatch.delenv("ADMIN_POLICY_TOKEN", raising=False)
+    monkeypatch.setenv("ALLOW_LOOPBACK_DEV_ADMIN", "1")
     request = SimpleNamespace(headers={"host": "localhost:8000"}, client=SimpleNamespace(host="203.0.113.10"))
 
     with pytest.raises(api_main.HTTPException) as exc:
         api_main.require_admin_token(request, x_admin_token="local-dev-admin")
 
     assert exc.value.status_code == 503
+
+
+def test_admin_token_loopback_fallback_refused_without_explicit_optin(monkeypatch):
+    # The production case: no policy token AND no opt-in flag. Behind a reverse
+    # proxy every client looks loopback, so the fallback must NOT fire.
+    monkeypatch.delenv("ADMIN_POLICY_TOKEN", raising=False)
+    monkeypatch.delenv("ALLOW_LOOPBACK_DEV_ADMIN", raising=False)
+    request = SimpleNamespace(headers={"host": "localhost:8000"}, client=SimpleNamespace(host="127.0.0.1"))
+
+    with pytest.raises(api_main.HTTPException) as exc:
+        api_main.require_admin_token(request, x_admin_token="local-dev-admin")
+
+    assert exc.value.status_code == 503
+
+
+def test_admin_token_constant_time_compare_still_rejects_wrong_token(monkeypatch):
+    monkeypatch.setenv("ADMIN_POLICY_TOKEN", "the-real-token")
+    request = SimpleNamespace(headers={"host": "example.com"}, client=SimpleNamespace(host="203.0.113.10"))
+
+    with pytest.raises(api_main.HTTPException) as exc:
+        api_main.require_admin_token(request, x_admin_token="the-real-tokeX")
+    assert exc.value.status_code == 401
+
+    # Empty token never satisfies compare_digest.
+    with pytest.raises(api_main.HTTPException):
+        api_main.require_admin_token(request, x_admin_token="")
+
+    api_main.require_admin_token(request, x_admin_token="the-real-token")
 
 
 def test_admin_policy_rejects_unknown_routing_strategy():
