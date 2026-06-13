@@ -390,8 +390,8 @@ class CloudBudgetGate:
                     ("last_accounting_error", reason, now),
                 )
                 await db.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("failed to persist last_accounting_error: %s", exc)
 
     async def _state_value(self, key: str) -> str:
         try:

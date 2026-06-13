@@ -1,3 +1,4 @@
+import logging
 import os
 from urllib.parse import urlparse, urlunparse
 from typing import Any, Literal
@@ -5,6 +6,8 @@ from pydantic import BaseModel, Field
 from gestaltworkframe.core.model_profile import GenerationParams, ModelProfile, ProfileStore, get_default_store
 from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, LLMProvider, OpenAICompatibleProvider
 from gestaltworkframe.core.router import ProviderRoute
+
+logger = logging.getLogger(__name__)
 
 _OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -104,8 +107,8 @@ class ProviderRegistry:
                 stored_key = self.key_store.get_key_sync(provider_id, self.admin_token)
                 if stored_key:
                     return stored_key
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("key store lookup failed for %s, falling back to env: %s", provider_id, exc)
         return ""
 
     @classmethod

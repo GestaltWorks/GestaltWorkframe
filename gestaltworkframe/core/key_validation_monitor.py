@@ -153,8 +153,8 @@ class KeyValidationMonitor:
                     minutes_since = (datetime.now(timezone.utc) - last_sent).total_seconds() / 60
                     if minutes_since < 60:  # Only alert once per hour per provider
                         return False
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("alert dedup check failed, proceeding to send: %s", exc)
         payload: dict[str, Any] = {
             "event": "key_validation_failures",
             "provider_id": provider_id,
