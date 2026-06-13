@@ -6,10 +6,12 @@ from pydantic import BaseModel, Field
 from gestaltworkframe.core.model_profile import GenerationParams, ModelProfile, ProfileStore, get_default_store
 from gestaltworkframe.core.providers import ClaudeProvider, LocalProvider, LLMProvider, OpenAICompatibleProvider
 from gestaltworkframe.core.router import ProviderRoute
+from gestalt_llm_contract import env as llm_env
 
 logger = logging.getLogger(__name__)
 
-_OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+# Single source of truth for the shared LLM env contract (see gestalt-llm-contract).
+_OPENROUTER_DEFAULT_BASE_URL = llm_env.DEFAULT_OPENROUTER_BASE_URL
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -34,7 +36,7 @@ def _provider_budget_id(profile: "ModelProfile") -> str:
 
 
 def _local_profile_base_url(profile_url: str) -> str:
-    override = _env_text("LOCAL_LLM_BASE_URL")
+    override = _env_text(llm_env.LOCAL_LLM_BASE_URL)
     if not override:
         return profile_url or "http://localhost:8080/v1"
     profile = urlparse(profile_url or "http://localhost:8080/v1")
@@ -134,22 +136,22 @@ class ProviderRegistry:
         else:
             primary = LocalProviderProfile(
                 name="env-local",
-                base_url=_env_text("LOCAL_LLM_BASE_URL", "http://localhost:8080/v1"),
-                model=_env_text("LOCAL_LLM_MODEL", "local-model"),
+                base_url=_env_text(llm_env.LOCAL_LLM_BASE_URL, llm_env.DEFAULT_LOCAL_BASE_URL),
+                model=_env_text(llm_env.LOCAL_LLM_MODEL, "local-model"),
             )
 
         secondary_profile_name = _env_text("CLAUDE_PROFILE")
         if secondary_profile_name and (sp := store.get(secondary_profile_name)):
             secondary = SecondaryProviderProfile(
                 name=sp.name,
-                enabled=_env_bool("ENABLE_CLAUDE_FALLBACK"),
+                enabled=_env_bool(llm_env.ENABLE_CLAUDE_FALLBACK),
                 role="escalation" if sp.cost_tier == "premium" else "secondary",
                 cost_tier=sp.cost_tier if sp.cost_tier in {"low_cost", "premium"} else "low_cost",
                 deployment_status=sp.deployment_status,
                 runtime_group=sp.runtime_group or "cloud",
                 enabled_by_default=sp.route_enabled_by_default(),
                 allowed_response_policies=sp.allowed_response_policies,
-                api_key=_env_text("ANTHROPIC_API_KEY"),
+                api_key=_env_text(llm_env.ANTHROPIC_API_KEY),
                 model=sp.model,
                 params=sp.params,
                 capabilities=sp.capabilities,
@@ -158,8 +160,8 @@ class ProviderRegistry:
         else:
             secondary = SecondaryProviderProfile(
                 name="env-secondary",
-                enabled=_env_bool("ENABLE_CLAUDE_FALLBACK"),
-                api_key=_env_text("ANTHROPIC_API_KEY"),
+                enabled=_env_bool(llm_env.ENABLE_CLAUDE_FALLBACK),
+                api_key=_env_text(llm_env.ANTHROPIC_API_KEY),
                 model=_env_text("CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
             )
 
@@ -226,7 +228,7 @@ class ProviderRegistry:
         return self._route_from_model_profile(profile, provider, configured=True)
 
     def _route_from_claude_profile(self, profile: ModelProfile) -> ProviderRoute:
-        api_key = self._get_api_key("anthropic", "ANTHROPIC_API_KEY")
+        api_key = self._get_api_key("anthropic", llm_env.ANTHROPIC_API_KEY)
         if not api_key:
             return self._route_from_model_profile(profile, None, configured=False, blocked_reason="missing_api_key")
         provider = ClaudeProvider(api_key=api_key, model=profile.model, params=profile.params)
@@ -256,11 +258,11 @@ class ProviderRegistry:
 
     def _route_from_openrouter_profile(self, profile: ModelProfile) -> ProviderRoute:
         # api_key_env overrides OPENROUTER_API_KEY when set on the profile.
-        key_env = profile.api_key_env or "OPENROUTER_API_KEY"
+        key_env = profile.api_key_env or llm_env.OPENROUTER_API_KEY
         api_key = _env_text(key_env)
         # base_url defaults to the canonical OpenRouter endpoint unless overridden.
         base_url_env_val = _env_text(profile.base_url_env) if profile.base_url_env else ""
-        base_url = base_url_env_val or profile.base_url or _env_text("OPENROUTER_BASE_URL", _OPENROUTER_DEFAULT_BASE_URL)
+        base_url = base_url_env_val or profile.base_url or _env_text(llm_env.OPENROUTER_BASE_URL, _OPENROUTER_DEFAULT_BASE_URL)
         model = _env_text(profile.model_env, profile.model) if profile.model_env else profile.model
         if not api_key:
             return self._route_from_model_profile(profile, None, configured=False, blocked_reason="missing_api_key", model=model)

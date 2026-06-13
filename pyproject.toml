@@ -29,7 +29,11 @@ dependencies = [
     "unstructured>=0.18.32",
     "uvicorn>=0.41.0",
     "cryptography>=46.0.5",
+    "gestalt-llm-contract",
 ]
+
+[tool.uv.sources]
+gestalt-llm-contract = { path = "packages/gestalt-llm-contract", editable = true }
 
 [dependency-groups]
 dev = [
@@ -48,7 +52,7 @@ include = ["gestaltworkframe*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-pythonpath = [".", "packages/gestalt-connector-protocol", "packages/gestalt-connector-fs", "packages/gestalt-connector-itglue", "packages/gestalt-connector-hudu", "packages/gestalt-connector-msgraph-files", "packages/gestalt-connector-s3"]
+pythonpath = [".", "packages/gestalt-llm-contract", "packages/gestalt-connector-protocol", "packages/gestalt-connector-fs", "packages/gestalt-connector-itglue", "packages/gestalt-connector-hudu", "packages/gestalt-connector-msgraph-files", "packages/gestalt-connector-s3"]
 markers = [
     "integration: hits real external APIs (requires ANTHROPIC_API_KEY)",
 ]

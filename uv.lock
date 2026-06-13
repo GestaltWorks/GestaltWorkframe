@@ -1244,6 +1244,11 @@ wheels = [
 ]
 
 [[package]]
+name = "gestalt-llm-contract"
+version = "0.1.0"
+source = { editable = "packages/gestalt-llm-contract" }
+
+[[package]]
 name = "gestalt-workframe"
 version = "0.1.0"
 source = { editable = "." }
@@ -1254,6 +1259,7 @@ dependencies = [
     { name = "chromadb" },
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "gestalt-llm-contract" },
     { name = "httpx" },
     { name = "langchain" },
     { name = "langchain-chroma" },
@@ -1289,6 +1295,7 @@ requires-dist = [
     { name = "chromadb", specifier = ">=1.5.8" },
     { name = "cryptography", specifier = ">=46.0.5" },
     { name = "fastapi", specifier = ">=0.136.1" },
+    { name = "gestalt-llm-contract", editable = "packages/gestalt-llm-contract" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "langchain", specifier = ">=1.2.15" },
     { name = "langchain-chroma", specifier = ">=1.1.0" },
