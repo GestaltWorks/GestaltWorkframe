@@ -906,8 +906,8 @@ class LLMRouter:
         if isinstance(self.cloud_budget, MultiProviderBudgetGate):
             try:
                 await self.cloud_budget.refresh_headroom_cache()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("headroom cache refresh failed, using cached values: %s", exc)
         ordered_routes, diagnostics = self._ordered_routes(
             force_secondary,
             cloud_allowed,
@@ -980,8 +980,8 @@ class LLMRouter:
         if isinstance(self.cloud_budget, MultiProviderBudgetGate):
             try:
                 await self.cloud_budget.refresh_headroom_cache()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("headroom cache refresh failed, using cached values: %s", exc)
         ordered_routes, diagnostics = self._ordered_routes(
             force_secondary,
             cloud_allowed,
