@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from gestaltworkframe.core.db import DiscoveryFind, DiscoverySource
-from gestaltworkframe.kb.discovery_ingest import discovery_find_document, ingest_approved_find_into_chroma
+from gestaltworkframe.kb.discovery_ingest import (
+    discovery_find_document,
+    ingest_approved_find_into_chroma,
+    purge_discovery_find_from_chroma,
+)
 
 
 def _find() -> DiscoveryFind:
@@ -47,3 +51,39 @@ def test_ingest_approved_find_adds_document(monkeypatch):
 
     assert len(calls) == 1
     assert calls[0].metadata["source"] == "discovery/find-1"
+
+
+def test_purge_uses_collection_delete_when_available(monkeypatch):
+    deletes = []
+
+    class Collection:
+        def delete(self, where):
+            deletes.append(where)
+
+    class Store:
+        _collection = Collection()
+
+        def delete(self, where):  # should NOT be called when _collection exists
+            raise AssertionError("fell through to vectorstore.delete")
+
+    monkeypatch.setattr("gestaltworkframe.kb.discovery_ingest.get_vectorstore", lambda: Store())
+
+    purge_discovery_find_from_chroma("find-1")
+
+    assert deletes == [{"source": "discovery/find-1"}]
+
+
+def test_purge_falls_back_to_vectorstore_delete(monkeypatch):
+    deletes = []
+
+    class Store:
+        _collection = None
+
+        def delete(self, where):
+            deletes.append(where)
+
+    monkeypatch.setattr("gestaltworkframe.kb.discovery_ingest.get_vectorstore", lambda: Store())
+
+    purge_discovery_find_from_chroma("find-2")
+
+    assert deletes == [{"source": "discovery/find-2"}]
