@@ -20,7 +20,6 @@ same router data.
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -30,11 +29,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel  # noqa: F401  - keep sqlmodel imported alongside select for parity
 
 from gestaltworkframe.api.services import AppServices, enabled_cost_tiers, get_app_services, require_admin_token
-from gestaltworkframe.core.key_store import ApiKeyStore, _PROVIDER_ENV_VARS as _KEY_STORE_PROVIDER_ENV_VARS
+from gestaltworkframe.core.key_store import _PROVIDER_ENV_VARS as _KEY_STORE_PROVIDER_ENV_VARS
 from gestaltworkframe.core.key_validation_monitor import KeyValidationMonitor
 from gestaltworkframe.core.rate_limiter import get_key_store_rate_limiter
 from gestaltworkframe.core.provider_balance import BalanceSnapshot, local_tracking_balance
-from gestaltworkframe.core.db import ContactRecord, TerminalIntakeRecord, async_session_maker, get_session
+from gestaltworkframe.core.db import ContactRecord, TerminalIntakeRecord, async_session_maker
 from gestaltworkframe.core.handoff_packets import (
     build_contact_handoff_packet,
     build_terminal_intake_handoff_packet,
@@ -287,6 +286,13 @@ async def _get_provider_balance(services: AppServices, provider_id: str) -> Bala
     return {"error": "no_balance_data"}
 
 
+async def _get_handoff_record(db: AsyncSession, record_type: str, uid: Any) -> Any | None:
+    """Fetch a contact or terminal-intake record by id for handoff endpoints."""
+    model = ContactRecord if record_type == "contact" else TerminalIntakeRecord
+    result = await db.execute(select(model).where(model.id == str(uid)))
+    return result.scalar_one_or_none()
+
+
 router = APIRouter(prefix="/admin/api", tags=["admin"])
 
 
@@ -389,7 +395,7 @@ async def admin_handoffs(
     contact_only: bool = False,
     _: None = Depends(require_admin_token),
 ) -> dict[str, Any]:
-    services = get_app_services(request)
+    get_app_services(request)  # 503 guard: ensure services are initialized
     async with async_session_maker() as db:
         total_contact = (await db.execute(select(ContactRecord).order_by(ContactRecord.created_at.desc()))).scalars().all()
         total_terminal = (await db.execute(select(TerminalIntakeRecord).order_by(TerminalIntakeRecord.created_at.desc()))).scalars().all()
@@ -426,7 +432,7 @@ async def admin_handoff_approve(
     request: Request,
     _: None = Depends(require_admin_token),
 ) -> dict[str, Any]:
-    services = get_app_services(request)
+    get_app_services(request)  # 503 guard: ensure services are initialized
     from uuid import UUID
     try:
         uid = UUID(record_id)
@@ -435,7 +441,7 @@ async def admin_handoff_approve(
     if record_type not in ("contact", "terminal"):
         raise HTTPException(status_code=400, detail=f"Unknown record_type: {record_type}")
     async with async_session_maker() as db:
-        record = await get_session(db, record_type, uid)
+        record = await _get_handoff_record(db, record_type, uid)
         if record is None:
             raise HTTPException(status_code=404, detail=f"{record_type} record not found")
         if getattr(record, "admin_approved", False):
@@ -584,7 +590,7 @@ async def admin_retention_sweep(
     dry_run=True reports what would be deleted without deleting.
     dry_run=False actually deletes records beyond the retention window.
     """
-    services = get_app_services(request)
+    get_app_services(request)  # 503 guard: ensure services are initialized
     policy = RetentionPolicy.from_env()
     result = await retention_sweep(policy, dry_run=dry_run)
     return {
@@ -615,7 +621,7 @@ async def admin_handoff_packet(
     if record_type not in ("contact", "terminal"):
         raise HTTPException(status_code=400, detail=f"Unknown record_type: {record_type}")
     async with async_session_maker() as db:
-        record = await get_session(db, record_type, uid)
+        record = await _get_handoff_record(db, record_type, uid)
         if record is None:
             raise HTTPException(status_code=404, detail=f"{record_type} record not found")
         if record_type == "contact":
