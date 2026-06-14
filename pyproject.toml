@@ -59,6 +59,11 @@ markers = [
 
 [tool.coverage.run]
 branch = true
+# Starlette/anyio bridge sync work through greenlet and a threadpool; without
+# these, coverage's tracer drops post-await lines in endpoints exercised over
+# the ASGI transport, understating API-layer coverage. greenlet ships with
+# sqlalchemy[asyncio].
+concurrency = ["thread", "greenlet"]
 source = ["gestaltworkframe.api", "gestaltworkframe.core", "gestaltworkframe.kb"]
 omit = [
     # Generated / scaffolding code that doesn't benefit from line coverage.
