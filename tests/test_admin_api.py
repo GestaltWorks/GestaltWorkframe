@@ -231,3 +231,86 @@ def test_handoff_approve_not_found(admin_client):
 def test_handoff_packet_bad_uuid(admin_client):
     r = admin_client.get("/admin/api/handoff-packet/contact/not-a-uuid", headers=_AUTH)
     assert r.status_code == 400
+
+
+# --- policy validations (consolidated from the former _apply_admin_policy) ---
+
+def test_policy_patch_routes_applies_and_rejects_unknown(admin_client):
+    known = list(admin_client.get("/admin/api/policy", headers=_AUTH).json()["route_overrides"])
+    assert known  # the local-only build still exposes at least one route
+    name = known[0]
+    ok = admin_client.patch("/admin/api/policy", headers=_AUTH, json={"routes": {name: False}})
+    assert ok.status_code == 200
+    assert ok.json()["policy"]["route_overrides"][name] is False
+
+    bad = admin_client.patch(
+        "/admin/api/policy", headers=_AUTH, json={"routes": {"no-such-route": False}}
+    )
+    assert bad.status_code == 400
+    assert bad.json()["detail"]["code"] == "unknown_route_names"
+
+
+def test_policy_patch_rejects_both_zero_provider_budget(admin_client):
+    r = admin_client.patch(
+        "/admin/api/policy",
+        headers=_AUTH,
+        json={"provider_budgets": {"openrouter": {"max_daily_usd": 0, "max_monthly_usd": 0}}},
+    )
+    assert r.status_code == 400
+
+
+# --- handoff packet building (the path that 500'd before the fix) ------------
+
+def _seed_handoff_records():
+    import json as _json
+
+    from gestaltworkframe.core.db import ContactRecord, TerminalIntakeRecord
+
+    async def _seed():
+        async with admin.async_session_maker() as session:
+            session.add(
+                ContactRecord(
+                    role="founder", name="Ada", email="ada@example.com",
+                    data=_json.dumps({"company": "Acme"}),
+                )
+            )
+            session.add(
+                TerminalIntakeRecord(
+                    terminal_session_id="sess-1", selected_mode="build", objective="ship it",
+                    data=_json.dumps({"objective": "ship it", "building": "x"}),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_seed())
+
+
+def test_handoffs_with_records_builds_packets(admin_client):
+    _seed_handoff_records()
+    r = admin_client.get("/admin/api/handoffs", headers=_AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 2
+    assert len(body["packets"]) == 2
+
+
+def test_handoff_packet_for_existing_contact(admin_client):
+    import json as _json
+    from uuid import uuid4 as _uuid4
+
+    from gestaltworkframe.core.db import ContactRecord
+
+    cid = str(_uuid4())
+
+    async def _seed():
+        async with admin.async_session_maker() as session:
+            session.add(
+                ContactRecord(
+                    id=cid, role="founder", name="Ada", email="ada@example.com", data=_json.dumps({}),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_seed())
+    r = admin_client.get(f"/admin/api/handoff-packet/contact/{cid}", headers=_AUTH)
+    assert r.status_code == 200
