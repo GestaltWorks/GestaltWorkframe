@@ -55,15 +55,9 @@ from gestaltworkframe.api.admin import (
     AdminPolicyPatch,
     DEFAULT_CLOUD_INPUT_TOKEN_CAP,
     DEFAULT_CLOUD_OUTPUT_TOKEN_CAP,
-    admin_health_check,
-    admin_handoff_packets,
-    update_admin_policy,
     router as admin_router,
     _admin_health_payload,
-    _admin_packet_payload,
     _apply_admin_policy,
-    _recent_handoff_packets,
-    _safe_json_dict,
 )
 from gestaltworkframe.api.admin_discovery import (
     DISCOVERY_RUN_ONCE_MIN_INTERVAL_SECONDS,
@@ -179,8 +173,8 @@ CORS_ALLOWED_ORIGINS = _parse_allowed_origins(os.getenv("CORS_ALLOWED_ORIGINS", 
 
 
 # AdminPolicyPatch, all Discovery* request models, _admin_health_payload,
-# _apply_admin_policy, _recent_handoff_packets, and every /admin/api/*
-# endpoint live in api/admin.py and api/admin_discovery.py. Backward-compat
+# and every /admin/api/* endpoint live in api/admin.py and
+# api/admin_discovery.py. Backward-compat
 # re-exports happen at the top of this file.
 
 
@@ -207,9 +201,9 @@ async def _log_kb_startup_status() -> None:
 
 # Admin policy + admin health + handoffs live in api/admin.py.
 # Admin discovery endpoints live in api/admin_discovery.py.
-# Both are wired into the FastAPI app via include_router below; helpers
-# (_admin_health_payload, _apply_admin_policy, etc.) are re-exported at
-# the top of this file for backward compatibility.
+# Both are wired into the FastAPI app via include_router below; the
+# _admin_health_payload helper is re-exported at the top of this file for
+# backward compatibility.
 
 
 @asynccontextmanager

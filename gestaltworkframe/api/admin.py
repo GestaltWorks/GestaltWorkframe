@@ -293,6 +293,30 @@ async def _get_handoff_record(db: AsyncSession, record_type: str, uid: Any) -> A
     return result.scalar_one_or_none()
 
 
+def _packet_for_record(record_type: str, record: Any) -> dict[str, Any]:
+    """Build the redacted handoff packet dict for one contact/terminal record.
+
+    The single source of truth for turning a stored record into a packet, used by
+    the list, packet, and approve surfaces. Parses the record's JSON data blob and
+    calls the typed builders with their real signatures.
+    """
+    try:
+        fields = json.loads(record.data) if record.data else {}
+    except json.JSONDecodeError:
+        fields = {}
+    if record_type == "contact":
+        packet = build_contact_handoff_packet(
+            role=record.role, name=record.name, email=record.email, fields=fields
+        )
+    else:
+        packet = build_terminal_intake_handoff_packet(
+            selected_mode=record.selected_mode,
+            intake=fields,
+            contact={"name": record.objective, "email": ""} if record.objective else None,
+        )
+    return packet_to_dict(packet)
+
+
 router = APIRouter(prefix="/admin/api", tags=["admin"])
 
 
@@ -337,45 +361,9 @@ async def admin_policy_patch(
     _: None = Depends(require_admin_token),
 ) -> dict[str, object]:
     services = get_app_services(request)
+    # Single source of truth for applying a policy patch (validation + mutation).
+    await _apply_admin_policy(services, patch)
     budget = services.cloud_budget.config
-
-    if patch.routing_strategy is not None:
-        services.llm_router.routing_strategy = patch.routing_strategy
-
-    if patch.cloud_spillover_enabled is not None:
-        budget.enabled = patch.cloud_spillover_enabled
-
-    if patch.max_calls_per_turn is not None:
-        budget.max_calls_per_turn = patch.max_calls_per_turn
-    if patch.max_calls_per_session is not None:
-        budget.max_calls_per_session = patch.max_calls_per_session
-    if patch.max_calls_per_day is not None:
-        budget.max_calls_per_day = patch.max_calls_per_day
-    if patch.max_calls_per_month is not None:
-        budget.max_calls_per_month = patch.max_calls_per_month
-    if patch.max_daily_usd is not None:
-        budget.max_daily_usd = patch.max_daily_usd
-    if patch.max_monthly_usd is not None:
-        budget.max_monthly_usd = patch.max_monthly_usd
-    if patch.max_input_tokens_per_call is not None:
-        budget.max_input_tokens_per_call = patch.max_input_tokens_per_call
-    if patch.max_output_tokens_per_call is not None:
-        budget.max_output_tokens_per_call = patch.max_output_tokens_per_call
-
-    if patch.routes is not None:
-        for route_name, enabled in patch.routes.items():
-            services.llm_router.set_route_override(route_name, enabled)
-
-    if patch.provider_budgets is not None:
-        from gestaltworkframe.core.cloud_budget import MultiProviderBudgetGate
-        if isinstance(services.cloud_budget, MultiProviderBudgetGate):
-            for pid, limits in patch.provider_budgets.items():
-                await services.cloud_budget.update_provider_budget(
-                    pid,
-                    max_daily_usd=limits.get("max_daily_usd"),
-                    max_monthly_usd=limits.get("max_monthly_usd"),
-                )
-
     return {
         "applied": patch.model_dump(exclude_unset=True),
         "policy": {
@@ -402,20 +390,13 @@ async def admin_handoffs(
     all_records: list[dict] = []
     if not contact_only:
         for t in total_terminal:
-            all_records.append({"type": "terminal", "created_at": t.created_at, "id": str(t.id), "record": t.to_dict()})
+            all_records.append({"type": "terminal", "created_at": t.created_at, "record": t})
     for c in total_contact:
-        all_records.append({"type": "contact", "created_at": c.created_at, "id": str(c.id), "record": c.to_dict()})
+        all_records.append({"type": "contact", "created_at": c.created_at, "record": c})
     all_records.sort(key=lambda x: x["created_at"], reverse=True)
     total = len(all_records)
     sliced = all_records[offset : offset + limit]
-    packets: list[dict] = []
-    for item in sliced:
-        record = item["record"]
-        if item["type"] == "contact":
-            packet = build_contact_handoff_packet(record)
-        else:
-            packet = build_terminal_intake_handoff_packet(record)
-        packets.append(packet_to_dict(packet))
+    packets = [_packet_for_record(item["type"], item["record"]) for item in sliced]
     return {
         "total": total,
         "offset": offset,
@@ -624,11 +605,7 @@ async def admin_handoff_packet(
         record = await _get_handoff_record(db, record_type, uid)
         if record is None:
             raise HTTPException(status_code=404, detail=f"{record_type} record not found")
-        if record_type == "contact":
-            packet = build_contact_handoff_packet(record)
-        else:
-            packet = build_terminal_intake_handoff_packet(record)
-    return packet_to_dict(packet)
+        return _packet_for_record(record_type, record)
 
 
 @router.get("/router-diagnostics")
@@ -647,146 +624,71 @@ async def admin_router_diagnostics(
     }
 
 
-# Export alias for backward compatibility
-admin_health_check = admin_health
-admin_handoff_packets = admin_handoffs
-update_admin_policy = admin_policy_patch
+async def _apply_admin_policy(services: Any, patch: "AdminPolicyPatch") -> dict[str, Any]:
+    """Apply an admin policy patch to the live services. Single source of truth.
 
-
-# Backward compatibility stubs for internal helpers
-async def _admin_packet_payload(record_type, record_id, services):
-    return {}
-
-
-def _safe_json_dict(obj):
-    if hasattr(obj, 'model_dump'):
-        return obj.model_dump()
-    if hasattr(obj, '__dict__'):
-        return obj.__dict__
-    return {}
-
-
-async def _recent_handoff_packets(session, limit=10):
-    """Return recent handoff packets from contact form and terminal intake records."""
-    packets = []
-
-    # Query recent contact records
-    from sqlalchemy import select, desc
-    result = await session.execute(
-        select(ContactRecord).order_by(desc(ContactRecord.created_at)).limit(limit)
-    )
-    contact_records = result.scalars().all()
-
-    for record in contact_records:
-        try:
-            fields = json.loads(record.data) if record.data else {}
-        except json.JSONDecodeError:
-            fields = {}
-        packet = build_contact_handoff_packet(
-            role=record.role,
-            name=record.name,
-            email=record.email,
-            fields=fields,
-        )
-        packets.append(packet_to_dict(packet))
-
-    # Query recent terminal intake records
-    result = await session.execute(
-        select(TerminalIntakeRecord).order_by(desc(TerminalIntakeRecord.created_at)).limit(limit)
-    )
-    intake_records = result.scalars().all()
-
-    for record in intake_records:
-        try:
-            intake_data = json.loads(record.data) if record.data else {}
-        except json.JSONDecodeError:
-            intake_data = {}
-        packet = build_terminal_intake_handoff_packet(
-            selected_mode=record.selected_mode,
-            intake=intake_data,
-            contact={"name": record.objective, "email": ""} if record.objective else None,
-        )
-        packets.append(packet_to_dict(packet))
-
-    return packets
-
-
-async def _apply_admin_policy(services, patch):
-    """Apply admin policy patch to the services.
-
-    Handles cloud_spillover_enabled, routing_strategy, route toggles,
-    cloud policy settings, and provider_budgets updates.
+    Validates (unknown routes, both-zero provider budgets) and mutates router,
+    cloud budget config, and cloud policy. Caps are written to the budget config
+    so the GET /policy view reflects them, and the per-turn/session caps are also
+    mirrored onto the cloud policy that the orchestrator enforces against.
+    Returns a summary of what changed.
     """
-    results = {"applied": True, "provider_budgets_updated": []}
+    results: dict[str, Any] = {"applied": True, "provider_budgets_updated": []}
 
-    # Handle cloud spillover enablement (direct or via tier enablement)
+    # Cloud spillover enablement (direct, or implied by enabling a tier).
     spillover_enabled = patch.cloud_spillover_enabled
     if spillover_enabled is None and patch.low_cost_enabled is True:
         spillover_enabled = True
-
     if spillover_enabled is not None and services.cloud_budget:
         services.cloud_budget.config.enabled = spillover_enabled
-        # Initialize the budget if enabling
-        if spillover_enabled and hasattr(services.cloud_budget, 'init'):
+        if spillover_enabled and hasattr(services.cloud_budget, "init"):
             await services.cloud_budget.init()
         results["cloud_spillover_enabled"] = spillover_enabled
-
-        # Disable cloud tiers when spillover is disabled
-        if not spillover_enabled and services.orchestrator and hasattr(services.orchestrator, 'cloud_policy'):
+        if not spillover_enabled and getattr(services.orchestrator, "cloud_policy", None):
             policy = services.orchestrator.cloud_policy
-            if hasattr(policy, 'low_cost_enabled'):
-                policy.low_cost_enabled = False
-            if hasattr(policy, 'claude_enabled'):
-                policy.claude_enabled = False
+            policy.low_cost_enabled = False
+            policy.claude_enabled = False
 
-    # Handle routing strategy
+    # Routing strategy: set the attribute the router and the GET view both read.
     if patch.routing_strategy is not None and services.llm_router:
-        if hasattr(services.llm_router, 'set_routing_strategy'):
-            services.llm_router.set_routing_strategy(patch.routing_strategy)
+        services.llm_router.routing_strategy = patch.routing_strategy
         results["routing_strategy"] = patch.routing_strategy
 
-    # Handle route enablement toggles
+    # Route enablement toggles, validated against the known route names.
     if patch.routes is not None and services.llm_router:
-        known_route_names = set()
-        if hasattr(services.llm_router, 'routes') and services.llm_router.routes:
-            known_route_names = {getattr(r, 'name', None) for r in services.llm_router.routes}
-        # Collect all unknown routes first
-        unknown_routes = [route_name for route_name in patch.routes.keys() if route_name not in known_route_names]
-        if unknown_routes:
+        known = {getattr(r, "name", None) for r in getattr(services.llm_router, "routes", [])}
+        unknown = [name for name in patch.routes if name not in known]
+        if unknown:
             raise HTTPException(
                 status_code=400,
-                detail={"code": "unknown_route_names", "routes": unknown_routes}
+                detail={"code": "unknown_route_names", "routes": unknown},
             )
         for route_name, enabled in patch.routes.items():
-            if hasattr(services.llm_router, 'set_route_enabled'):
-                services.llm_router.set_route_enabled(route_name, enabled)
-        results["routes_updated"] = list(patch.routes.keys())
+            services.llm_router.set_route_enabled(route_name, enabled)
+        results["routes_updated"] = list(patch.routes)
 
-    # Handle cloud policy settings
-    if services.orchestrator and hasattr(services.orchestrator, 'cloud_policy'):
+    # Cloud policy tier toggles + per-turn/session caps (orchestrator enforcement).
+    if getattr(services.orchestrator, "cloud_policy", None):
         policy = services.orchestrator.cloud_policy
-        # Check if spillover is explicitly disabled (wins over tier enable)
-        spillover_explicitly_disabled = patch.cloud_spillover_enabled is False
-        if patch.claude_enabled is not None:
-            # Don't enable tier if spillover is explicitly disabled
-            if not (spillover_explicitly_disabled and patch.claude_enabled):
-                policy.claude_enabled = patch.claude_enabled
-                results["claude_enabled"] = patch.claude_enabled
-        if patch.low_cost_enabled is not None:
-            # Don't enable tier if spillover is explicitly disabled
-            if not (spillover_explicitly_disabled and patch.low_cost_enabled):
-                policy.low_cost_enabled = patch.low_cost_enabled
-                results["low_cost_enabled"] = patch.low_cost_enabled
+        spillover_off = patch.cloud_spillover_enabled is False
+        if patch.claude_enabled is not None and not (spillover_off and patch.claude_enabled):
+            policy.claude_enabled = patch.claude_enabled
+            results["claude_enabled"] = patch.claude_enabled
+        if patch.low_cost_enabled is not None and not (spillover_off and patch.low_cost_enabled):
+            policy.low_cost_enabled = patch.low_cost_enabled
+            results["low_cost_enabled"] = patch.low_cost_enabled
         if patch.max_calls_per_turn is not None:
             policy.max_cloud_calls_per_turn = patch.max_calls_per_turn
-            results["max_calls_per_turn"] = patch.max_calls_per_turn
         if patch.max_calls_per_session is not None:
             policy.max_cloud_calls_per_session = patch.max_calls_per_session
-            results["max_calls_per_session"] = patch.max_calls_per_session
 
-    # Handle budget config settings
-    if services.cloud_budget and hasattr(services.cloud_budget, 'config'):
+    # Budget config caps: these back the GET /policy view.
+    if services.cloud_budget and hasattr(services.cloud_budget, "config"):
         config = services.cloud_budget.config
+        if patch.max_calls_per_turn is not None:
+            config.max_calls_per_turn = patch.max_calls_per_turn
+        if patch.max_calls_per_session is not None:
+            config.max_calls_per_session = patch.max_calls_per_session
         if patch.max_calls_per_day is not None:
             config.max_calls_per_day = patch.max_calls_per_day
         if patch.max_calls_per_month is not None:
@@ -795,31 +697,30 @@ async def _apply_admin_policy(services, patch):
             config.max_daily_usd = patch.max_daily_usd
         if patch.max_monthly_usd is not None:
             config.max_monthly_usd = patch.max_monthly_usd
-        # Set default token caps if cloud is enabled and caps are zero
-        if patch.cloud_spillover_enabled and hasattr(config, 'max_input_tokens_per_call'):
+        if patch.max_input_tokens_per_call is not None:
+            config.max_input_tokens_per_call = patch.max_input_tokens_per_call
+        if patch.max_output_tokens_per_call is not None:
+            config.max_output_tokens_per_call = patch.max_output_tokens_per_call
+        # Backstop token caps when enabling spillover with caps still at zero.
+        if patch.cloud_spillover_enabled and hasattr(config, "max_input_tokens_per_call"):
             if config.max_input_tokens_per_call == 0:
                 config.max_input_tokens_per_call = DEFAULT_CLOUD_INPUT_TOKEN_CAP
             if config.max_output_tokens_per_call == 0:
                 config.max_output_tokens_per_call = DEFAULT_CLOUD_OUTPUT_TOKEN_CAP
 
-    # Handle provider_budgets updates
+    # Per-provider budget caps, rejecting a both-zero (provider-disabling) patch.
     if patch.provider_budgets and services.cloud_budget:
-        for provider_id, budget_changes in patch.provider_budgets.items():
-            max_daily = budget_changes.get("max_daily_usd")
-            max_monthly = budget_changes.get("max_monthly_usd")
-
-            # Validate: reject both zero (would disable the provider budget entirely)
+        for pid, limits in patch.provider_budgets.items():
+            max_daily = limits.get("max_daily_usd")
+            max_monthly = limits.get("max_monthly_usd")
             if max_daily is not None and max_monthly is not None and max_daily == 0 and max_monthly == 0:
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"Cannot set both caps to zero for {provider_id}"
+                    status_code=400, detail=f"Cannot set both caps to zero for {pid}"
                 )
-
             await services.cloud_budget.update_provider_budget(
-                provider_id=provider_id,
-                max_daily_usd=max_daily,
-                max_monthly_usd=max_monthly,
+                provider_id=pid, max_daily_usd=max_daily, max_monthly_usd=max_monthly
             )
-            results["provider_budgets_updated"].append(provider_id)
+            results["provider_budgets_updated"].append(pid)
 
     return results
+
