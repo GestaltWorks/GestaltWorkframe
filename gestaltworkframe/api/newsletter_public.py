@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gestaltworkframe.api.request_helpers import client_ip
 from gestaltworkframe.core.db import ContactRecord, get_session
-from gestaltworkframe.core.subscribers import ROLE_TOPICS, subscribe_and_reply, unsubscribe_by_token
+from gestaltworkframe.core.subscribers import subscribe_and_reply, unsubscribe_by_token
 
 router = APIRouter(prefix="/newsletter", tags=["newsletter"])
 logger = logging.getLogger(__name__)

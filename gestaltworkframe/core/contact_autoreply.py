@@ -280,7 +280,7 @@ def _interested_template(first_name: str, unsub: str, booking_url: str) -> AutoR
 def _generic_template(first_name: str, unsub: str) -> AutoReply:
     site = _site_url()
     lib = _library_path()
-    subject = f"Thanks for reaching out"
+    subject = "Thanks for reaching out"
     body_html = (
         f"<p>Hi {first_name},</p>"
         "<p>Thanks for the contact. You're on the newsletter list. The library is at "

@@ -262,7 +262,7 @@ def main():
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     logger.info("Creating Chroma DB at %s...", CHROMA_DB_DIR)
-    vectorstore = Chroma.from_documents(
+    Chroma.from_documents(
         documents=splits,
         embedding=embeddings,
         persist_directory=str(CHROMA_DB_DIR)

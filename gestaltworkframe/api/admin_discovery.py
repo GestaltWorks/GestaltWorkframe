@@ -49,7 +49,6 @@ from gestaltworkframe.core.discovery_queue import (
     list_finds_for_source,
     set_find_dismissed,
     set_find_featured,
-    set_find_newsletter_pending,
     set_find_ticker_featured,
     set_source_featured,
     unpublish_find_from_library,

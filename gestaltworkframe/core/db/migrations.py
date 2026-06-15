@@ -213,7 +213,6 @@ async def _collapse_artifact_finds_into_categories(conn) -> None:
     preserved only when ALL children were dismissed.
     """
     import json as _json
-    from datetime import datetime as _dt
 
     migration_name = "collapse_artifact_finds_into_categories_v1"
     await conn.execute(text(

@@ -1,91 +1,27 @@
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
 import asyncio
 
-from fastapi import FastAPI, HTTPException, Depends, Query, Request, Response, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Any, Literal
 import os
-import json
 import logging
-import time
 from contextlib import asynccontextmanager
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
 
-# Backward-compat: api.main historically exposed every chat-surface symbol.
-# The chat router, models, helpers, and constants now live in api.chat;
-# importing them here keeps the historical surface area for tests and external
-# code that does `import gestaltworkframe.api.main as api_main` and reaches for ChatRequest,
-# ChatMetrics, chat_stream, etc.
 from gestaltworkframe.api.chat import (
-    CHAT_DAILY_TOKEN_LIMIT,
-    CHAT_IP_LIMIT,
-    CHAT_IP_WINDOW,
-    CHAT_MAX_BODY_BYTES,
-    CHAT_MAX_MESSAGE_CHARS,
-    CHAT_OUTPUT_TOKEN_RESERVE,
-    CHAT_SESSION_LIMIT,
-    CHAT_SESSION_WINDOW,
-    ChatAbuseContext,
-    ChatRequest,
-    IntakeAnswers,
-    INTAKE_QUESTIONS,
     chat_body_size_limit,
-    chat_stream,
-    get_intake_questions,
-    get_modes_endpoint,
     router as chat_router,
-    _chat_session_key,
-    _enforce_chat_abuse_limits,
-    _enum_value,
-    _estimate_chat_tokens,
-    _log_chat_turn,
-    _route_family,
-    _safe_decision_log_payload,
-    _safe_route_log_payload,
-    _selected_route_tier,
-    _utc_day_start,
 )
 from gestaltworkframe.api.contact import contact_body_size_limit, router as contact_router
 from gestaltworkframe.api.admin import (
-    ADMIN_HANDOFF_LIMIT,
-    AdminPolicyPatch,
-    DEFAULT_CLOUD_INPUT_TOKEN_CAP,
-    DEFAULT_CLOUD_OUTPUT_TOKEN_CAP,
     router as admin_router,
-    _admin_health_payload,
-    _apply_admin_policy,
 )
 from gestaltworkframe.api.admin_discovery import (
-    DISCOVERY_RUN_ONCE_MIN_INTERVAL_SECONDS,
-    DiscoveryLibraryPromotionRequest,
-    DiscoveryDecisionRequest,
-    DiscoverySourceCreate,
-    DiscoverySourcePatch,
-    DiscoverySourcePromotionRequest,
-    admin_discovery_approve_find,
-    admin_discovery_create_source,
-    admin_discovery_finds,
-    admin_discovery_promote_library,
-    admin_discovery_promote_source,
-    admin_discovery_reject_find,
-    admin_discovery_run_once,
-    admin_discovery_sources,
-    admin_discovery_update_source,
     router as admin_discovery_router,
 )
-from gestaltworkframe.api.library_feed import router as library_feed_router, library_latest_feed
+from gestaltworkframe.api.library_feed import router as library_feed_router
 from gestaltworkframe.api.health import (
     router as health_router,
-    provider_health_check,
-    _is_cloud_status,
-    _provider_status,
-    _public_cloud_block_reason,
-    _public_cloud_health_controls,
-    _public_provider_group,
 )
 from gestaltworkframe.api.deployment_config import router as deployment_config_router
 from gestaltworkframe.api.privacy_audit import router as privacy_audit_router
@@ -95,54 +31,42 @@ from gestaltworkframe.api.intake import intake_body_size_limit, router as intake
 from gestaltworkframe.api.newsletter_public import router as newsletter_public_router
 from gestaltworkframe.api.services import (
     AppServices,
-    ChatMetrics,
     build_app_services,
     enabled_cost_tiers,
+)
+from gestaltworkframe.core.db import (
+    init_db,
+)
+from gestaltworkframe.mcp_servers.kb_server import vectorstore_document_count
+
+# Re-exported for `import gestaltworkframe.api.main as api_main` consumers (tests).
+# These are the only symbols still reached through api.main; everything else now
+# imports from its owning module directly. Keep this list minimal.
+from fastapi import HTTPException  # noqa: F401
+from gestaltworkframe.api.admin import (  # noqa: F401
+    AdminPolicyPatch,
+    DEFAULT_CLOUD_INPUT_TOKEN_CAP,
+    DEFAULT_CLOUD_OUTPUT_TOKEN_CAP,
+    _admin_health_payload,
+    _apply_admin_policy,
+)
+from gestaltworkframe.api.chat import (  # noqa: F401
+    CHAT_DAILY_TOKEN_LIMIT,
+    CHAT_IP_LIMIT,
+    CHAT_MAX_MESSAGE_CHARS,
+    INTAKE_QUESTIONS,
+    ChatRequest,
+    chat_stream,
+    clean_intake_text,
+    get_intake_questions,
+)
+from gestaltworkframe.api.health import provider_health_check  # noqa: F401
+from gestaltworkframe.api.services import (  # noqa: F401
+    ChatMetrics,
     get_app_services,
     require_admin_token,
 )
-from gestaltworkframe.core.cloud_budget import CloudBudgetGate  # re-exported for tests
-from gestaltworkframe.core.db import (
-    ContactRecord,
-    TerminalIntakeRecord,
-    add_chat_usage_event,
-    add_chat_usage_event_in_new_session,
-    add_message,
-    add_message_in_new_session,
-    chat_usage_snapshot,
-    create_conversation,
-    get_conversation,
-    get_messages,
-    get_session,
-    init_db,
-    save_intake_record,
-    save_terminal_intake_submission,
-)
-from gestaltworkframe.core.handoff_packets import (
-    build_contact_handoff_packet,
-    build_terminal_intake_handoff_packet,
-    packet_to_dict,
-)
-from gestaltworkframe.core.discovery_digest import send_discovery_digest
-from gestaltworkframe.core.discovery_queue import (
-    add_watched_source,
-    decide_find,
-    list_public_latest_finds,
-    list_recent_finds,
-    list_source_health,
-    promote_find_to_library,
-    promote_find_to_source,
-    update_watched_source,
-)
-from gestaltworkframe.core.discovery_scheduler import run_one_pass
-from gestaltworkframe.core.discovery_summary import summarize_discovery_finds
-from gestaltworkframe.core.router import ROUTING_STRATEGIES
-# Backward-compat: tests historically reached for `api.main.clean_intake_text`.
-# The implementation now lives wherever the consumer needs it; re-export here.
-from gestaltworkframe.api.chat import clean_intake_text  # noqa: F401
-from gestaltworkframe.kb.library_publisher import LibraryPublisherConfigError, LibraryPublisherError
-from gestaltworkframe.kb.watchlist import CADENCE_SECONDS, WatchedSource, validate_watchlist
-from gestaltworkframe.mcp_servers.kb_server import vectorstore_document_count
+from gestaltworkframe.core.db import get_session  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -160,10 +84,6 @@ STATE_CHANGING_PUBLIC_PATHS = {
 }
 DEFAULT_CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
 
-# ADMIN_HANDOFF_LIMIT, DEFAULT_CLOUD_INPUT_TOKEN_CAP, DEFAULT_CLOUD_OUTPUT_TOKEN_CAP
-# are re-exported from gestaltworkframe.api.admin. DISCOVERY_RUN_ONCE_MIN_INTERVAL_SECONDS and the
-# scheduler-trigger lock are re-exported from gestaltworkframe.api.admin_discovery.
-
 
 def _parse_allowed_origins(raw: str) -> tuple[str, ...]:
     return tuple(sorted({origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()}))
@@ -172,16 +92,6 @@ def _parse_allowed_origins(raw: str) -> tuple[str, ...]:
 CORS_ALLOWED_ORIGINS = _parse_allowed_origins(os.getenv("CORS_ALLOWED_ORIGINS", DEFAULT_CORS_ALLOWED_ORIGINS))
 
 
-# AdminPolicyPatch, all Discovery* request models, _admin_health_payload,
-# and every /admin/api/* endpoint live in api/admin.py and
-# api/admin_discovery.py. Backward-compat
-# re-exports happen at the top of this file.
-
-
-# ChatMetrics, AppServices, build_app_services, get_app_services,
-# require_admin_token, and the loopback / enabled-cost-tiers helpers all live
-# in api/services.py. They are re-exported above for backward compatibility
-# with `import gestaltworkframe.api.main as api_main` consumers.
 _enabled_cost_tiers = enabled_cost_tiers
 
 
@@ -199,11 +109,8 @@ async def _log_kb_startup_status() -> None:
         logger.info("Knowledge base vector store contains %s documents", count)
 
 
-# Admin policy + admin health + handoffs live in api/admin.py.
-# Admin discovery endpoints live in api/admin_discovery.py.
-# Both are wired into the FastAPI app via include_router below; the
-# _admin_health_payload helper is re-exported at the top of this file for
-# backward compatibility.
+# Admin policy + admin health + handoffs live in api/admin.py; admin discovery
+# endpoints live in api/admin_discovery.py. Both are wired in via include_router below.
 
 
 @asynccontextmanager
@@ -307,7 +214,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health endpoints (/health, /health/providers) and their helpers live in
-# api/health.py. The api.health router is wired in below alongside the chat
-# router. Backward-compat re-exports of the helpers are added at the top of
-# the file.
+# Health endpoints (/health, /health/providers) live in api/health.py; the
+# router is wired in below alongside the chat router.
