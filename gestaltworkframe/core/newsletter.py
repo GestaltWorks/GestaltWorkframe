@@ -49,7 +49,6 @@ from gestaltworkframe.core.db.models import (
     DiscoverySource,
     NewsletterDelivery,
     NewsletterIssue,
-    Subscriber,
 )
 from gestaltworkframe.core.discovery_queue import _serialize_public_find
 from gestaltworkframe.core.email_service import send_internal_email
@@ -255,21 +254,6 @@ async def next_display_label(session: AsyncSession) -> str:
     epoch_count = sum(1 for label in labels if _display_label_epoch(label or "") == last_ship)
     return f"{last_ship}{_label_letter(epoch_count)}"
 
-
-# Kept as a thin alias so any external callers we haven't tracked down
-# don't blow up. New code should use next_display_label / ship_number.
-async def next_issue_number(session: AsyncSession) -> int:
-    """Deprecated: use next_display_label.
-
-    Returns the next ship_number that _would_ be assigned if we shipped
-    right now, which is rarely what the caller actually wants. Logs a
-    warning and falls through to _next_ship_number for back-compat.
-    """
-    logger.warning(
-        "next_issue_number is deprecated; use next_display_label or "
-        "_next_ship_number (ship-time only)."
-    )
-    return await _next_ship_number(session)
 
 
 async def next_default_target_send_at(session: AsyncSession) -> datetime:
@@ -1500,64 +1484,6 @@ async def run_scheduled_cycle(session: AsyncSession) -> dict[str, Any]:
             summary["draft_skipped_reason"] = f"reminder_error:{type(exc).__name__}"
 
     return summary
-
-
-# Backwards-compat: tests and the GitHub Actions workflow still call
-# `run_scheduled_cycle`. Keep the older `compose_pending_issue` path
-# alive so existing tests that exercise the composer directly don't
-# break; the cron itself no longer routes through it.
-async def _legacy_run_scheduled_cycle_compose_path(session: AsyncSession) -> dict[str, Any]:
-    """Preserved here for historical reference / accidental call sites.
-
-    The current cron flow is `run_scheduled_cycle` above. If you need
-    the old "compose + maybe skip" semantics for a one-off script,
-    call this; otherwise prefer the new daily tick.
-    """
-    now = _now()
-    pending = (
-        await session.execute(
-            select(NewsletterIssue).where(NewsletterIssue.status == "awaiting_approval")
-        )
-    ).scalar_one_or_none()
-    if pending is not None:
-        return {
-            "action": "skipped",
-            "reason": "awaiting_approval_already_exists",
-            "issue_id": pending.id,
-        }
-
-    last = (
-        await session.execute(
-            select(NewsletterIssue)
-            .where(NewsletterIssue.status.in_(["sent", "skipped"]))
-            .order_by(NewsletterIssue.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    last_created = last.created_at if last is not None else None
-    if last_created is not None and last_created.tzinfo is None:
-        last_created = last_created.replace(tzinfo=timezone.utc)
-    if last is not None and (now - last_created) < timedelta(days=CYCLE_DAYS):
-        days_since = (now - last_created).total_seconds() / 86400
-        return {
-            "action": "skipped",
-            "reason": "cycle_window_not_elapsed",
-            "days_since_last": round(days_since, 2),
-            "cycle_days": CYCLE_DAYS,
-        }
-
-    result = await compose_pending_issue(session)
-    if not result.created:
-        return {"action": "skipped_no_pending", "issue_id": result.issue.id, "status": result.issue.status}
-
-    # 4. Notify the operator. Best-effort.
-    notification_status = await _send_approval_notification(result.issue)
-    return {
-        "action": "composed",
-        "issue_id": result.issue.id,
-        "find_count": len(json.loads(result.issue.finds_json) or []),
-        "notification": notification_status,
-    }
 
 
 # Approval token: short-lived HMAC over issue_id + expiry. Lives in the

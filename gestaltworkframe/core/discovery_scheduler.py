@@ -16,10 +16,9 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import httpx
-from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -45,6 +44,9 @@ from gestaltworkframe.core.discovery_handlers import (
 from gestaltworkframe.kb.target_safety import build_guarded_async_client
 from gestaltworkframe.kb.watchlist import WatchedSource, refresh_seconds, validate_watchlist
 from gestaltworkframe.kb.watchlist_seed import WATCHLIST_SEED
+
+if TYPE_CHECKING:
+    from gestaltworkframe.core.key_store import ApiKeyStore
 
 logger = logging.getLogger(__name__)
 
@@ -474,11 +476,7 @@ async def _auto_ingest_if_eligible(record: DiscoveryFind, source: DiscoverySourc
     # exists to make library queryable; we still write Chroma below regardless
     # so the LLM has the reference even if the publisher is unconfigured.
     try:
-        from gestaltworkframe.kb.library_publisher import (
-            LibraryPublisherConfigError,
-            LibraryPublisherError,
-            publish_find_to_library,
-        )
+        from gestaltworkframe.kb.library_publisher import publish_find_to_library
         result = await publish_find_to_library(record, source)
         record.published_to_library_repo = True
         record.library_target_path = result.path
