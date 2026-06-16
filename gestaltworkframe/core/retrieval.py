@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from gestaltworkframe.mcp_servers.kb_server import kb_search
+from gestaltworkframe.mcp_servers.kb_server import kb_search_with_eligibility
 from gestaltworkframe.core.discovery_retrieval import approved_discovery_context_result
 from gestaltworkframe.core.tool_policy import WORKFLOW_PATTERN_SEARCH
 
@@ -81,7 +81,12 @@ class KnowledgeRetriever:
         if cached is not None:
             return cached
         search_query = self._search_query(clean_query, tool_name)
-        content = await asyncio.to_thread(kb_search, search_query, limit)
+        # One search returns both the text and per-source cloud-eligibility: a
+        # restricted local source downgrades the whole retrieval, same as
+        # discovery can. Library/public sources stay cloud-eligible by default.
+        content, local_cloud_eligible = await asyncio.to_thread(
+            kb_search_with_eligibility, search_query, limit
+        )
         discovery_context = await approved_discovery_context_result(clean_query, limit=3)
         if discovery_context.content:
             if content.strip() and "no relevant information found" not in content.lower() and "error searching knowledge base" not in content.lower():
@@ -92,9 +97,13 @@ class KnowledgeRetriever:
                 source = "discovery"
         else:
             source = "local"
-        # TODO(connector-kb): make kb_search return source privacy metadata. Today it returns plain text only;
-        # indexed library sources are treated as cloud-eligible, while discovery can downgrade mixed results.
-        result = RetrievalResult(tool_name=tool_name, query=clean_query, content=content, source=source, cloud_llm_eligible=discovery_context.cloud_llm_eligible)
+        result = RetrievalResult(
+            tool_name=tool_name,
+            query=clean_query,
+            content=content,
+            source=source,
+            cloud_llm_eligible=local_cloud_eligible and discovery_context.cloud_llm_eligible,
+        )
         if result.has_context or not self.fallback_url:
             if result.has_context:
                 self._cache_put(cache_key, result)
