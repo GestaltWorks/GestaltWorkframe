@@ -116,6 +116,61 @@ def _dedupe_results(results: list[tuple[Any, float]]) -> list[tuple[Any, float]]
         deduped.append((doc, score))
     return deduped
 
+def _ranked_documents(query: str, num_results: int) -> list:
+    """Shared ranked-retrieval core: similarity search, dedupe, rerank, truncate.
+
+    Returns a list of (document, score) pairs. Used by both kb_search (text) and
+    kb_search_cloud_eligible (privacy metadata) so the two never diverge.
+    """
+    bounded_results = _bounded_num_results(num_results)
+    vs = get_vectorstore()
+    candidate_count = min(max(bounded_results * 5, 20), 50)
+    results = vs.similarity_search_with_score(query, k=candidate_count)
+    results = _dedupe_results(results)
+    return sorted(
+        results,
+        key=lambda item: _rerank_score(
+            query,
+            item[0].metadata.get('source', 'Unknown'),
+            item[0].page_content,
+            item[1],
+        ),
+    )[:bounded_results]
+
+
+def doc_cloud_llm_eligible(metadata: dict) -> bool:
+    """Whether a single retrieved document may be sent to a cloud LLM.
+
+    Cloud-eligible unless its source metadata explicitly marks it restricted via
+    `cloud_llm_eligible: false`. Public/library and approved-discovery sources
+    leave the flag unset and are therefore eligible; a privacy-restricted source
+    sets it false at ingest time and is honored here.
+    """
+    return bool(metadata.get("cloud_llm_eligible", True))
+
+
+def kb_search_with_eligibility(
+    query: str, num_results: int = DEFAULT_NUM_RESULTS
+) -> tuple[str, bool]:
+    """One ranked search returning (formatted text, cloud-eligibility).
+
+    cloud-eligibility is True only if every retrieved document is cloud-eligible;
+    one restricted source downgrades the whole retrieval, so context mixing a
+    private local source is not sent to a cloud LLM. Empty results / errors
+    default to eligible (no private content surfaced to gate on). A single query
+    serves both the text and the privacy decision — the hot path stays one search.
+    """
+    try:
+        ranked = _ranked_documents(query, num_results)
+        if not ranked:
+            return NO_RELEVANT_INFO_MESSAGE, True
+        eligible = all(doc_cloud_llm_eligible(doc.metadata) for doc, _ in ranked)
+        return format_search_results(ranked), eligible
+    except Exception:
+        logger.exception("Knowledge base search failed")
+        return SEARCH_ERROR_MESSAGE, True
+
+
 @mcp.tool(
     name="kb_search",
     description="Search the configured corpus and reference sources. Returns ranked snippets with citations and public links when available."
@@ -124,29 +179,9 @@ def kb_search(
     query: str,
     num_results: int = DEFAULT_NUM_RESULTS
 ) -> str:
-    try:
-        bounded_results = _bounded_num_results(num_results)
-        vs = get_vectorstore()
-        candidate_count = min(max(bounded_results * 5, 20), 50)
-        results = vs.similarity_search_with_score(query, k=candidate_count)
-        results = _dedupe_results(results)
-        results = sorted(
-            results,
-            key=lambda item: _rerank_score(
-                query,
-                item[0].metadata.get('source', 'Unknown'),
-                item[0].page_content,
-                item[1],
-            ),
-        )[:bounded_results]
-        
-        if not results:
-            return NO_RELEVANT_INFO_MESSAGE
-
-        return format_search_results(results)
-    except Exception:
-        logger.exception("Knowledge base search failed")
-        return SEARCH_ERROR_MESSAGE
+    # MCP tool surface: text only. Internal callers that also need the privacy
+    # decision use kb_search_with_eligibility (same single query).
+    return kb_search_with_eligibility(query, num_results)[0]
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

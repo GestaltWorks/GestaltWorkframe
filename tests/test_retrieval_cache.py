@@ -23,12 +23,12 @@ def patched_kb(monkeypatch):
     def fake_kb_search(query, limit):
         calls["count"] += 1
         calls["queries"].append(query)
-        return f"context-for[{query}]"
+        return (f"context-for[{query}]", True)
 
     async def empty_discovery(query, *, limit=3):
         return DiscoveryContext("")
 
-    monkeypatch.setattr(retrieval_mod, "kb_search", fake_kb_search)
+    monkeypatch.setattr(retrieval_mod, "kb_search_with_eligibility", fake_kb_search)
     monkeypatch.setattr(retrieval_mod, "approved_discovery_context_result", empty_discovery)
     return calls
 
@@ -91,12 +91,12 @@ async def test_empty_context_not_cached(monkeypatch):
 
     def fake_kb_search(query, limit):
         calls["count"] += 1
-        return "no relevant information found"
+        return ("no relevant information found", True)
 
     async def empty_discovery(query, *, limit=3):
         return DiscoveryContext("")
 
-    monkeypatch.setattr(retrieval_mod, "kb_search", fake_kb_search)
+    monkeypatch.setattr(retrieval_mod, "kb_search_with_eligibility", fake_kb_search)
     monkeypatch.setattr(retrieval_mod, "approved_discovery_context_result", empty_discovery)
 
     retriever = KnowledgeRetriever(fallback_url="")

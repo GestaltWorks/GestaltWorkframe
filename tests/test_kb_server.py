@@ -1,6 +1,5 @@
 from types import SimpleNamespace
 
-import pytest
 
 import gestaltworkframe.mcp_servers.kb_server as kb_server
 from gestaltworkframe.kb import retrieval_format, source_links
@@ -178,3 +177,47 @@ def test_workflow_library_rerank_boosts_importable_bundle_sources():
 
     assert index_score < 0
     assert schema_score > index_score
+
+
+# --- per-source cloud-eligibility (kb_search_with_eligibility) ---------------
+
+def test_doc_cloud_llm_eligible_default_and_explicit():
+    assert kb_server.doc_cloud_llm_eligible({"source": "x"}) is True
+    assert kb_server.doc_cloud_llm_eligible({"cloud_llm_eligible": False}) is False
+
+
+def test_kb_search_with_eligibility_all_eligible(monkeypatch):
+    store = _VectorStore([(_doc("a", "c1"), 0.1), (_doc("b", "c2"), 0.2)])
+    monkeypatch.setattr(kb_server, "get_vectorstore", lambda: store)
+    text, eligible = kb_server.kb_search_with_eligibility("q")
+    assert eligible is True
+    assert "c1" in text
+
+
+def test_kb_search_with_eligibility_restricted_source_downgrades(monkeypatch):
+    restricted = SimpleNamespace(
+        metadata={"source": "b", "type": ".md", "source_name": "t", "cloud_llm_eligible": False},
+        page_content="c2",
+    )
+    store = _VectorStore([(_doc("a", "c1"), 0.1), (restricted, 0.2)])
+    monkeypatch.setattr(kb_server, "get_vectorstore", lambda: store)
+    _, eligible = kb_server.kb_search_with_eligibility("q")
+    assert eligible is False
+
+
+def test_kb_search_with_eligibility_empty_is_eligible(monkeypatch):
+    monkeypatch.setattr(kb_server, "get_vectorstore", lambda: _VectorStore([]))
+    text, eligible = kb_server.kb_search_with_eligibility("q")
+    assert eligible is True
+
+
+def test_kb_search_with_eligibility_error_defaults_eligible(monkeypatch):
+    monkeypatch.setattr(kb_server, "get_vectorstore", lambda: _VectorStore(raises=RuntimeError("boom")))
+    text, eligible = kb_server.kb_search_with_eligibility("q")
+    assert eligible is True
+
+
+def test_kb_search_tool_still_returns_text(monkeypatch):
+    store = _VectorStore([(_doc("a", "c1"), 0.1)])
+    monkeypatch.setattr(kb_server, "get_vectorstore", lambda: store)
+    assert isinstance(kb_server.kb_search("q"), str)
