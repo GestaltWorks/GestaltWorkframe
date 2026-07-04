@@ -59,10 +59,13 @@ REVIEW-VERDICT: {"agent":"<code-reviewer|security-reviewer>","verdict":"<autoMer
 
 ## Escalation surfaces (any one forces needs-operator)
 
-Auth, secrets or credentials, encryption, payments or billing, data
-migrations, production deploys, external API integrations, destructive data
-operations. This mirrors the merge policy in AGENTS.md and the dispatcher's
-escalation gate: content the gates run plan-only, the reviewers escalate.
+The irreversible tier only: secret/credential rotation or exposure, payment or
+billing changes, destructive or irreversible data operations (deletion,
+destructive migration), authorization/permission changes, force-push over
+shared history. This mirrors the merge policy in AGENTS.md and the dispatcher's
+escalation gate. A directed production deploy, a normal migration, or ordinary
+external-API work is not on this list — those ship. Reaching prod is the
+intended outcome, not an escalation.
 
 ## Verdict consumption
 

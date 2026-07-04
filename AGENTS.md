@@ -91,22 +91,32 @@ Before editing any file, check if another agent is likely working in the same ar
 
 ## Merge and Ship Policy
 
-**The default is to ship.** Once your PR is open and CI runs:
+**The default is to ship, all the way to live.** Merged to main/master == prod
+== live; the merge to the main branch is the live event, not a push to a
+feature/dev branch. A directed or approved task runs end to end — branch, PR,
+merge to main, deploy, smoke check — without a further approval step. Feature
+and dev branches are dev; work them freely. Reaching production by merging a
+directed task is the intended outcome, not a reason to stop.
 
-**You may expect AUTO-MERGE when ALL of:**
+**You may expect AUTO-MERGE-AND-SHIP when ALL of:**
 - CI is fully passing (no relevant skipped checks)
 - The reviewer verdict is `autoMerge` (emitted by the `code-reviewer` /
   `security-reviewer` agents, per `docs/standards/review-standards.md`)
 - No breaking changes detected
-- No security flags raised
 - PR scope is atomic (single task, single concern)
 
-**The PR will be escalated to the operator when ANY of:**
-- Breaking change in prod behavior detected
-- Any security concern raised (even minor)
-- Claude review returns `needs-operator`
-- Task type is `architecture-decision`
-- PR touches: auth, secrets, encryption, data migrations, payments, external API integrations
+**Raise a dashboard Decision (POST `/api/decisions`) — review-and-accept, never
+a silent stop — only for the irreversible tier:**
+- Production data deletion or destructive migration
+- Secret/credential rotation or exposure
+- Payment or billing changes
+- Force-push over shared history
+- Mass external outreach to real people
+- A concrete security hole the reviewer confirms (`needs-operator` with a real
+  finding, not a style nit)
+
+Post the decision, keep working the rest of the task, and let the operator
+accept or reject from the dashboard. Anything not in this tier ships.
 
 **As the agent, your job is:**
 - Open clean, atomic PRs
