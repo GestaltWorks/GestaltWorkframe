@@ -17,6 +17,8 @@ This is the source of truth; repos vendor a copy as `docs/standards/model-routin
    only when task fit justifies it.
 4. The application owns policy, credentials, routing, memory, and final
    acceptance. Models are workers, not decision-makers.
+5. Tokens-per-call is a cost lever independent of tier. Shrink the payload
+   before the call; this compounds with routing instead of competing with it.
 
 ## Default routing order (best value)
 
@@ -32,6 +34,23 @@ This is the source of truth; repos vendor a copy as `docs/standards/model-routin
 Under "best value" the cost/value lean toward cheaper tiers wins ties and
 near-ties; task fit still dominates, so a genuinely hard turn escalates over the
 lean.
+
+## Context compression (pre-call)
+
+Compress high-volume machine output — tool results, logs, RAG chunks, files —
+before any metered or premium call. Human-authored context still follows the
+context-pack discipline; compression handles the bulk noise a human will not
+trim by hand.
+
+- A local-first, reversible compressor is the preferred implementation:
+  originals cached on-box, retrieved on demand, no data leaving the machine.
+  `headroom` (`headroomlabs-ai/headroom`, Apache 2.0) is the current reference
+  fit; a proxy is the zero-code path, a library the invasive one.
+- Compression runs after secret redaction and after the not-cloud-eligible
+  check, never before. It must not be the thing that decides what is safe to
+  send.
+- Gate any compressor the same way you gate a model swap: the deterministic
+  evaluation checklist must still pass on the compressed payload.
 
 ## Escalation discipline
 

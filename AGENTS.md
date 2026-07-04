@@ -2,14 +2,14 @@
 
 # AGENTS.md — EGI Agent Behavior Contract
 
-This file governs how all AI agents (Cline, Claude, Devin, Cursor) operate in EGI repos.
+This file governs how all AI agents (Cline, Claude) operate in EGI repos.
 Read this before writing a single line of code. Follow it without exception.
 
 ---
 
 ## Before You Start
 
-1. **Read the operator profile.** `operator-profile.md` (in this kit's `instructions/`)
+1. **Read the operator profile.** `personal/operator-profile.md` (in this kit's gitignored `personal/` folder)
    tells you who you're working with, their communication preferences, what they want you
    to decide vs escalate, and their hard lines. Apply it. When it conflicts with a hard
    rule here or in `coding-rules.md`, the rule wins — and you flag the conflict.
@@ -52,7 +52,11 @@ status update, and proceed. Do not ask permission to make sensible decisions.
 
 ## Status Updates
 
-POST to `webhookUrl` (from task brief) at each of these points:
+POST to `webhookUrl` (from task brief) at each of these points. Authenticate
+with the `x-task-token` header, read from the `OPERATOR_TASK_TOKEN`
+environment variable the dispatcher sets for your run; the token opens your
+task's webhook and nothing else. Keep it out of output and logs. (Operator
+tools and the collector authenticate with `x-admin-token` instead.)
 
 ```json
 { "status": "in-progress", "summary": "Starting: [first step description]", "filesChanged": [] }
@@ -91,7 +95,8 @@ Before editing any file, check if another agent is likely working in the same ar
 
 **You may expect AUTO-MERGE when ALL of:**
 - CI is fully passing (no relevant skipped checks)
-- Claude code review returns `autoMerge: true`
+- The reviewer verdict is `autoMerge` (emitted by the `code-reviewer` /
+  `security-reviewer` agents, per `docs/standards/review-standards.md`)
 - No breaking changes detected
 - No security flags raised
 - PR scope is atomic (single task, single concern)
@@ -153,6 +158,7 @@ authoritative for that repo. CI and collaborators rely on the in-repo copies:
 | `docs/standards/coding-rules.md` | Code style, patterns, what's allowed |
 | `docs/standards/secrets.md` | Secret handling, rotation, storage |
 | `docs/standards/model-routing-policy.md` | When to use which model, escalation rules |
+| `docs/standards/review-standards.md` | What reviewer agents enforce; the autoMerge / needs-operator verdict contract |
 
 Operator-global standards load from the builder kit via Cline's global rules folder
 (`Documents\Cline\Rules`), so they apply on this machine without per-repo copies:
