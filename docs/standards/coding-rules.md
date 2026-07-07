@@ -76,6 +76,84 @@ Build the smallest correct version that can be tested, maintained, secured, and 
 - A deployment is complete only when the live service is updated and a smoke check passes.
 - Know the rollback path before risky releases.
 
+## Change impact discipline
+
+These rules govern every change that modifies behavior, structure, or
+configuration. They exist because two failure modes recur: merging around
+a red CI, and rewriting tests to match whatever the code now does.
+
+### 1. CI is a gate, not a signal
+
+- A PR merges only when CI is green on the exact commit being merged.
+- Command chains that end in a merge must verify check status before the
+  merge step runs. Pattern:
+  `gh pr checks <pr> --watch --fail-fast && gh pr merge <pr>`.
+  A bare `gh pr merge` at the end of a chain violates this rule even when
+  CI happens to be green, because the chain itself carries no gate.
+- Admin merges, force merges, and `--admin` flags are prohibited. If CI is
+  broken or cannot run, stop, report the state, and wait for the operator.
+  Working around a gate is never in scope.
+- "CI failed but the change looks fine" is a report to the operator, never
+  a decision the agent makes.
+
+### 2. Tests are contracts
+
+A failing test means one of exactly three things. Classify before acting:
+
+1. **The code is wrong.** Fix the code. This is the default assumption.
+2. **The test encodes retired behavior.** Updating the test is legitimate
+   only when the behavior change was explicitly requested or approved in
+   this task. State the claim in the status update and PR description:
+   name the test, name the old contract it encoded, name the decision that
+   retired it. If the behavior change was incidental to the task, stop and
+   ask before touching the test.
+3. **The test is flaky.** Quarantine it with a tracked task. Never delete
+   or weaken it silently.
+
+- Never edit an assertion to match current output. The question is always
+  "which is wrong, the code or the contract," and the agent answers it
+  explicitly, in writing, before the edit.
+- Any commit that changes both a behavior and the tests validating that
+  behavior must say so in the PR description, with reasoning.
+
+### 3. Blast radius before the first edit
+
+Before modifying, replacing, or removing any function, module, config key,
+workflow, or schema:
+
+- Search the entire repo for every reference: call sites, imports, tests,
+  config, docs, CI workflows, scheduled jobs. Search by name and by string,
+  not just by the current file's imports.
+- List what the search found in the plan or status update. A change plan
+  without a blast radius list is incomplete.
+- Give each affected site a disposition: updated, unaffected (with the
+  reason), or out of scope (flagged to the operator).
+- Trace one level further than feels necessary. Cross-module and cross-repo
+  effects count: shared schemas, published contracts, env vars, webhook
+  payloads, anything another system consumes.
+
+### 4. Replacement is a migration, not an addition
+
+Creating a new version of something means completing the migration in the
+same task:
+
+- Wire the new component into every call site the blast radius search found.
+- Remove the old component, or mark it deprecated with a tracked removal
+  task. Two parallel paths with no marker is a defect, not a transition.
+- Update imports, exports, registrations, docs, and tests to the new path.
+- Final check: a repo-wide search for the old identifier returns only
+  intentional references (changelog, migration notes). Anything else is
+  unfinished work.
+
+### 5. Definition of done additions
+
+A change is done when all of the following hold:
+
+- CI is green on the merged commit. Verified, not assumed.
+- The blast radius list from rule 3 is fully dispositioned.
+- The repo-wide search from rule 4 comes back clean.
+- Every test modification carries a written justification under rule 2.
+
 ## Brand and product
 
 - Use existing brand assets before generating new ones.
