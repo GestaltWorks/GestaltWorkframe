@@ -76,83 +76,96 @@ Build the smallest correct version that can be tested, maintained, secured, and 
 - A deployment is complete only when the live service is updated and a smoke check passes.
 - Know the rollback path before risky releases.
 
-## Change impact discipline
+## Change discipline
 
-These rules govern every change that modifies behavior, structure, or
-configuration. They exist because two failure modes recur: merging around
-a red CI, and rewriting tests to match whatever the code now does.
+### Principle
 
-### 1. CI is a gate, not a signal
+The unit of work is the system, not the diff. A task is complete when the
+system is coherent and verified, not when the requested edit exists.
+Everything below is an instance of one prohibition: never optimize the
+signal of completion (green check, merged PR, passing suite, absent error)
+at the expense of the condition that signal exists to report.
 
-- A PR merges only when CI is green on the exact commit being merged.
-- Command chains that end in a merge must verify check status before the
-  merge step runs. Pattern:
-  `gh pr checks <pr> --watch --fail-fast && gh pr merge <pr>`.
-  A bare `gh pr merge` at the end of a chain violates this rule even when
-  CI happens to be green, because the chain itself carries no gate.
-- Admin merges, force merges, and `--admin` flags are prohibited. If CI is
-  broken or cannot run, stop, report the state, and wait for the operator.
-  Working around a gate is never in scope.
-- "CI failed but the change looks fine" is a report to the operator, never
-  a decision the agent makes.
+### 1. Blockers are information first
 
-### 2. Tests are contracts
+When anything resists the change (a failing check, a failing test, a
+conflicting call site, a lint error, a permission wall, a missing file):
 
-A failing test means one of exactly three things. Classify before acting:
+- Diagnose what the resistance is telling you before deciding what to do
+  about it. Write the diagnosis into the status update.
+- Assign one of three dispositions, explicitly:
+  a. The change is wrong or incomplete. Fix the change. This is the
+     default assumption.
+  b. The resisting artifact encodes retired intent. Update it only if
+     retiring that intent was requested or approved in this task.
+     Otherwise stop and ask.
+  c. The resistance is environmental noise. Verify that claim (rerun,
+     check history), then quarantine with a tracked task.
+- Silencing, weakening, skipping, deleting, or routing around the
+  resisting artifact without a written disposition is prohibited. This
+  covers every current and future variant of "make the obstacle stop
+  complaining."
 
-1. **The code is wrong.** Fix the code. This is the default assumption.
-2. **The test encodes retired behavior.** Updating the test is legitimate
-   only when the behavior change was explicitly requested or approved in
-   this task. State the claim in the status update and PR description:
-   name the test, name the old contract it encoded, name the decision that
-   retired it. If the behavior change was incidental to the task, stop and
-   ask before touching the test.
-3. **The test is flaky.** Quarantine it with a tracked task. Never delete
-   or weaken it silently.
+### 2. Scope is discovered, not assumed
 
-- Never edit an assertion to match current output. The question is always
-  "which is wrong, the code or the contract," and the agent answers it
-  explicitly, in writing, before the edit.
-- Any commit that changes both a behavior and the tests validating that
-  behavior must say so in the PR description, with reasoning.
+The true scope of a change is every place that depends on the behavior
+being changed, not the file being edited.
 
-### 3. Blast radius before the first edit
+- Before the first edit, search the whole repo, and any known external
+  consumers, for references to the thing being changed: names, strings,
+  config keys, schemas, routes, env vars, exported contracts.
+- Write the resulting blast radius list into the plan. Disposition every
+  item: updated, unaffected (with the reason), or flagged out of scope
+  to the operator.
+- Trace one level beyond where it feels finished. Consumers of the
+  consumers count.
 
-Before modifying, replacing, or removing any function, module, config key,
-workflow, or schema:
+### 3. Every change is a migration
 
-- Search the entire repo for every reference: call sites, imports, tests,
-  config, docs, CI workflows, scheduled jobs. Search by name and by string,
-  not just by the current file's imports.
-- List what the search found in the plan or status update. A change plan
-  without a blast radius list is incomplete.
-- Give each affected site a disposition: updated, unaffected (with the
-  reason), or out of scope (flagged to the operator).
-- Trace one level further than feels necessary. Cross-module and cross-repo
-  effects count: shared schemas, published contracts, env vars, webhook
-  payloads, anything another system consumes.
+Replacing, renaming, moving, or restructuring anything means finishing
+the transition in the same task:
 
-### 4. Replacement is a migration, not an addition
-
-Creating a new version of something means completing the migration in the
-same task:
-
-- Wire the new component into every call site the blast radius search found.
-- Remove the old component, or mark it deprecated with a tracked removal
-  task. Two parallel paths with no marker is a defect, not a transition.
-- Update imports, exports, registrations, docs, and tests to the new path.
-- Final check: a repo-wide search for the old identifier returns only
+- Every call site from the blast radius list moves to the new path.
+- The old path is removed, or explicitly deprecated with a tracked
+  removal task. Two live paths with no marker is a defect.
+- Docs, tests, config, CI, and registrations follow the code.
+- Exit check: a repo-wide search for the old identifier returns only
   intentional references (changelog, migration notes). Anything else is
   unfinished work.
 
-### 5. Definition of done additions
+### 4. Irreversible actions require verified preconditions
 
-A change is done when all of the following hold:
+Merge, delete, deploy, publish, force-push, migrate, drop: before any
+action that is hard to undo, verify its preconditions in the same
+execution, not from memory or assumption.
 
-- CI is green on the merged commit. Verified, not assumed.
-- The blast radius list from rule 3 is fully dispositioned.
-- The repo-wide search from rule 4 comes back clean.
-- Every test modification carries a written justification under rule 2.
+- Chains must gate: the consequential step runs only if the verification
+  step passes (`verify && act`). An ungated chain violates this rule
+  even when it happens to succeed.
+- If a gate is red or unavailable, stop and report. Working around a
+  gate is never in scope, whatever the gate is.
+
+### 5. Done means coherent
+
+A task is done when every blocker has a written disposition, the blast
+radius list is fully dispositioned, no orphaned paths remain, every
+irreversible action was gated and its gate passed, and the system
+demonstrably runs: tests pass, the build builds, the workflow executes.
+Verified in this session, not inferred.
+
+### Illustrations of the prohibited move (non-exhaustive)
+
+- Merging around red CI.
+- Rewriting a test assertion to match new output without a stated
+  contract decision.
+- Adding a skip marker, `|| true`, `--no-verify`, or a type-ignore to
+  silence a failure.
+- Broadening a try/except to make an error message disappear.
+- Creating `thing_v2` and leaving `thing` wired in.
+- Deleting a config key that "seemed unused" without a reference search.
+
+New variants of this move appear constantly. The rule covers the move,
+not the list.
 
 ## Brand and product
 
