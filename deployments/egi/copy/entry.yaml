@@ -1,0 +1,15 @@
+# Chaos entry: the EGI circuit-ant mark assembles from particle dust, bursts
+# into a fractal attractor on click, then frames the terminal while these
+# boot lines type. Remove this file (or the style key) to restore the
+# classic entry.
+style: chaos
+boot_lines:
+  - "$ egi init"
+  - "  loading gestalt engine ......... ok"
+  - "  indexing workflows ............. ok"
+  - "  chaos, contained."
+  - ""
+  - "  Eudai Gestalt Integrations"
+  - "  > More workflows, less work."
+  - ""
+  - "$ "
