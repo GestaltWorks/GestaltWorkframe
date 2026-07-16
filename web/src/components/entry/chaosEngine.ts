@@ -115,8 +115,8 @@ const ATTRACTORS: Attractor[] = [
   { name: "Ghost Orchid", kind: "dejong", params: [1.4, -2.3, 2.4, -2.1] },
 ];
 
-const BURST_MS = 620;
-const CONVERGE_MS = 2400;
+const BURST_MS = 480;
+const CONVERGE_MS = 1400;
 const MAX_COLOR_BUCKETS = 255;
 
 /** Session-scoped memory so consecutive visits avoid an immediate repeat. */
@@ -231,7 +231,7 @@ export class ChaosEngine {
     this.ctx = ctx;
     this.colors = { ...DEFAULT_COLORS, ...options.colors };
     this.n = options.particleCount ?? 9000;
-    this.fractalHoldMs = options.fractalHoldMs ?? 6500;
+    this.fractalHoldMs = options.fractalHoldMs ?? 2200;
     this.onPhase = options.onPhase;
 
     this.px = new Float32Array(this.n);
@@ -287,6 +287,17 @@ export class ChaosEngine {
     this.heading = "logo";
     this.setPhase("converge");
     if (!this.rafId) this.rafId = requestAnimationFrame(this.frame);
+  }
+
+  /**
+   * Skip the remaining theater: jump straight to the settled frame so the
+   * terminal can reveal immediately. "Get to the information, fast."
+   */
+  finishNow(): void {
+    if (this.phase === "idle" || this.phase === "framed") return;
+    this.heading = "frame";
+    this.setFrameTargets();
+    this.settle();
   }
 
   /** Click handler entry: detonate the idling logo into a random attractor. */
@@ -641,7 +652,7 @@ export class ChaosEngine {
         this.setPhase("converge");
       }
     } else if (this.phase === "converge") {
-      const k = 0.004 + 0.1 * smoothstep(Math.min(1, elapsed / 1700));
+      const k = 0.004 + 0.12 * smoothstep(Math.min(1, elapsed / 900));
       for (let i = 0; i < this.n; i++) {
         this.vx[i] = (this.vx[i] + (this.tx[i] - this.px[i]) * k) * 0.86;
         this.vy[i] = (this.vy[i] + (this.ty[i] - this.py[i]) * k) * 0.86;

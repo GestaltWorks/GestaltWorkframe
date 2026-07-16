@@ -28,8 +28,8 @@ export type ChaosEntryProps = {
   onReady?: () => void;
 };
 
-const TYPE_INTERVAL_MS = 22;
-const READY_PAUSE_MS = 400;
+const TYPE_INTERVAL_MS = 12;
+const READY_PAUSE_MS = 150;
 
 function defaultFrameRect(): DOMRect {
   const width = Math.min(window.innerWidth * 0.74, 880);
@@ -195,6 +195,22 @@ export default function ChaosEntry({
     setStage("handoff");
   };
 
+  // Any click during the theater skips ahead — the animation is a flourish,
+  // never a gate in front of the terminal.
+  const skipAhead = () => {
+    if (stage === "running") {
+      engineRef.current?.finishNow(); // fires the framed phase -> boot lines
+      return;
+    }
+    if (stage === "framed") {
+      if (typeTimerRef.current) window.clearInterval(typeTimerRef.current);
+      if (readyTimerRef.current) window.clearTimeout(readyTimerRef.current);
+      setTypedText(bootLines.join("\n"));
+      onReady?.();
+      setStage("handoff");
+    }
+  };
+
   useEffect(() => {
     return () => {
       engineRef.current?.destroy();
@@ -219,7 +235,11 @@ export default function ChaosEntry({
   // the entry section rather than sitting fixed over the whole viewport (a
   // fixed opaque canvas curtained all site content below the fold).
   return (
-    <div ref={wrapperRef} className="absolute inset-0">
+    <div
+      ref={wrapperRef}
+      className={`absolute inset-0 ${stage === "running" || stage === "framed" ? "cursor-pointer" : ""}`}
+      onClick={skipAhead}
+    >
       <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-0 h-full w-full" aria-hidden="true" />
 
       <div
@@ -262,7 +282,7 @@ export default function ChaosEntry({
 
       {stage === "running" && attractorName ? (
         <div className="pointer-events-none absolute bottom-6 left-1/2 z-10 -translate-x-1/2 font-mono text-[10px] uppercase tracking-[0.28em] text-brand-gold-warm/55">
-          {attractorName}
+          {attractorName} &middot; click to skip
         </div>
       ) : null}
 
