@@ -29,6 +29,26 @@ engine changes upstream from an implementation as the normal path.
 
 ## Reconciliation log
 
+### Anthropic gateway support + health-status honesty (providers, terminal)
+
+Three fixes from the 2026-07-16 EGI_bot production incident (direct Anthropic
+key went 401-invalid; cloud routing moved to the on-host LiteLLM broker;
+the terminal status pill read Online while every route failed):
+
+- `ClaudeProvider` accepts an optional `base_url` (env `ANTHROPIC_BASE_URL`)
+  so Claude routes can run through an Anthropic-compatible gateway; the
+  `update_api_key` rotation path preserves it.
+- `OpenAICompatibleProvider.health_status` reports `model_available=False`
+  for a blank configured model id (a blank model can never serve chat even
+  when the `/models` probe succeeds).
+- The terminal frontend derives its status pill from the health payload's
+  `status` field (server-computed turn viability) instead of recounting
+  configured providers.
+
+- **Provenance exception:** fixed in EGI_bot first (PRs #50/#51) under
+  production pressure, then forward-ported here so GestaltWorkframe stays
+  the canonical source.
+
 ### Local-route health gate / fast cloud failover (router)
 
 A health gate (`LLMRouter._local_route_callable`) was added so a down local

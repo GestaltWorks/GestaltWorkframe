@@ -139,7 +139,11 @@ export default function ChatWidget() {
         const readyProviders = (providerData.models || [providerData.primary, providerData.secondary]).filter(
           (provider) => provider.configured && provider.callable
         );
-        if (readyProviders.length > 0) {
+        // Trust the backend's own turn-viability verdict: `status` is "ok"
+        // only when a route can actually serve a chat turn. Counting
+        // configured providers here previously read as Online while every
+        // route was failing (invalid key, blank model id).
+        if (providerData.status === "ok" && readyProviders.length > 0) {
           setConnectionStatus("online");
           setOfflineReason("");
         } else {

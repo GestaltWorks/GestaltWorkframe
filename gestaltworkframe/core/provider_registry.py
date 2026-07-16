@@ -206,7 +206,12 @@ class ProviderRegistry:
         s = self.secondary_profile
         if not s.enabled or not s.api_key:
             return None
-        provider = ClaudeProvider(api_key=s.api_key, model=s.model, params=s.params)
+        provider = ClaudeProvider(
+            api_key=s.api_key,
+            model=s.model,
+            params=s.params,
+            base_url=_env_text(llm_env.ANTHROPIC_BASE_URL) or None,
+        )
         self._attach_profile(provider, s)
         return provider
 
@@ -231,7 +236,12 @@ class ProviderRegistry:
         api_key = self._get_api_key("anthropic", llm_env.ANTHROPIC_API_KEY)
         if not api_key:
             return self._route_from_model_profile(profile, None, configured=False, blocked_reason="missing_api_key")
-        provider = ClaudeProvider(api_key=api_key, model=profile.model, params=profile.params)
+        provider = ClaudeProvider(
+            api_key=api_key,
+            model=profile.model,
+            params=profile.params,
+            base_url=_env_text(llm_env.ANTHROPIC_BASE_URL) or None,
+        )
         self._attach_model_profile(provider, profile)
         return self._route_from_model_profile(profile, provider, configured=True)
 
