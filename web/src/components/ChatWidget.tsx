@@ -23,9 +23,12 @@ import {
   defaultIntakeQuestions,
   defaultModes,
   emptyIntake,
+  entryBootLines,
   objectiveOptionLabels,
   openingLines,
 } from "./chat/constants";
+import ChaosEntry from "./entry/ChaosEntry";
+import { fetchDeploymentConfig, type PublicDeploymentConfig } from "@/lib/deploymentConfig";
 
 export default function ChatWidget() {
   const widgetId = useId().replace(/:/g, "");
@@ -55,9 +58,11 @@ export default function ChatWidget() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [terminalSessionId] = useState(createTerminalSessionId);
   const [showStatusInfo, setShowStatusInfo] = useState(false);
-  
+  const [deployment, setDeployment] = useState<PublicDeploymentConfig | null>(null);
+
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const terminalPanelRef = useRef<HTMLDivElement>(null);
+  const terminalFrameRef = useRef<HTMLElement | null>(null);
   const entryTimerRef = useRef<number | null>(null);
   const providerModels = providerHealth?.models || [providerHealth?.primary, providerHealth?.secondary];
   const callableProviders = providerModels.filter(
@@ -75,6 +80,16 @@ export default function ChatWidget() {
   const splittingEntry = entryStage === "splitting";
   const terminalVisible = entryStage === "done";
   const entryComplete = entryStage === "done";
+  // The chaos entry is an opt-in deployment capability: it runs only when the
+  // deployment's copy bundle sets `entry.style: chaos` AND provides a logo.
+  // Every other deployment keeps the classic entry and terminal presentation.
+  const entryConfig = (deployment?.copy?.entry ?? null) as { style?: string; boot_lines?: unknown } | null;
+  const entryLogoSrc =
+    entryConfig?.style === "chaos" ? deployment?.brand.logo_path || "" : "";
+  const configuredBootLines = Array.isArray(entryConfig?.boot_lines)
+    && entryConfig.boot_lines.every((line): line is string => typeof line === "string")
+    ? entryConfig.boot_lines
+    : entryBootLines;
 
   useEffect(() => {
     const updateInfoScrollProgress = () => {
@@ -155,6 +170,20 @@ export default function ChatWidget() {
     };
 
     loadServerState();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDeploymentConfig()
+      .then((config) => {
+        if (!cancelled) setDeployment(config);
+      })
+      .catch(() => {
+        /* no deployment config: the plain entry animation is the fallback */
+      });
     return () => {
       cancelled = true;
     };
@@ -500,33 +529,51 @@ export default function ChatWidget() {
       <h1 id={terminalHeadingId} className="sr-only">Guided terminal</h1>
       <div
         aria-hidden={entryComplete}
-        className={`absolute inset-0 z-30 flex items-center justify-center overflow-hidden bg-brand-dark transition-opacity duration-700 ${entryComplete ? "pointer-events-none opacity-0" : "opacity-100"}`}
+        className={`absolute inset-0 z-30 flex items-center justify-center overflow-hidden bg-brand-dark transition-opacity duration-700 ${
+          entryComplete ? "pointer-events-none" : ""
+        } ${entryComplete && !entryLogoSrc ? "opacity-0" : "opacity-100"}`}
       >
-        <div className={`absolute left-0 top-1/2 h-px w-[52vw] origin-left bg-gradient-to-r from-transparent via-brand-gold to-transparent transition-transform duration-[1800ms] ease-out ${splittingEntry ? "translate-x-[105vw] opacity-100" : "translate-x-[-54vw] opacity-0"}`} />
-        <div className={`absolute right-0 top-[42%] h-px w-[42vw] origin-right bg-gradient-to-l from-transparent via-brand-gold-warm to-transparent transition-transform delay-200 duration-[1700ms] ease-out ${splittingEntry ? "-translate-x-[100vw] opacity-100" : "translate-x-[44vw] opacity-0"}`} />
-        <div className={`absolute bottom-[30%] left-1/2 h-px w-[38vw] bg-gradient-to-r from-transparent via-brand-sage to-transparent transition-transform delay-300 duration-[1600ms] ease-out ${splittingEntry ? "translate-x-[40vw] opacity-80" : "-translate-x-1/2 opacity-0"}`} />
+        {entryLogoSrc ? (
+          <ChaosEntry
+            logoSrc={entryLogoSrc}
+            logoAlt={`${deployment?.identity.short_name || "Terminal"} mark`}
+            label="Guided terminal"
+            sublabel="Click to open"
+            frameLabel={`${deployment?.identity.short_name || "Guided"} — terminal`}
+            bootLines={configuredBootLines}
+            frameTargetRef={terminalFrameRef}
+            onSequenceStart={() => setEntryStage("splitting")}
+            onReady={() => setEntryStage("done")}
+          />
+        ) : (
+          <>
+            <div className={`absolute left-0 top-1/2 h-px w-[52vw] origin-left bg-gradient-to-r from-transparent via-brand-gold to-transparent transition-transform duration-[1800ms] ease-out ${splittingEntry ? "translate-x-[105vw] opacity-100" : "translate-x-[-54vw] opacity-0"}`} />
+            <div className={`absolute right-0 top-[42%] h-px w-[42vw] origin-right bg-gradient-to-l from-transparent via-brand-gold-warm to-transparent transition-transform delay-200 duration-[1700ms] ease-out ${splittingEntry ? "-translate-x-[100vw] opacity-100" : "translate-x-[44vw] opacity-0"}`} />
+            <div className={`absolute bottom-[30%] left-1/2 h-px w-[38vw] bg-gradient-to-r from-transparent via-brand-sage to-transparent transition-transform delay-300 duration-[1600ms] ease-out ${splittingEntry ? "translate-x-[40vw] opacity-80" : "-translate-x-1/2 opacity-0"}`} />
 
-        <div className="relative flex flex-col items-center gap-6">
-          <button
-            type="button"
-            onClick={activateTerminal}
-            disabled={splittingEntry}
-            className="group relative flex h-52 w-52 items-center justify-center rounded-full border border-brand-gold-warm/40 bg-black/30 outline-none transition-transform duration-300 hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-brand-gold sm:h-64 sm:w-64"
-            aria-label="Open terminal"
-          >
-            <Terminal size={96} className="text-brand-gold" aria-hidden="true" />
-          </button>
-          <div className={`text-center transition-opacity duration-500 ${splittingEntry ? "opacity-0" : "opacity-100"}`}>
-            <div className="font-rajdhani text-sm uppercase tracking-[0.36em] text-brand-gold-warm/80">Guided terminal</div>
-            <div className="mt-3 font-mono text-xs uppercase tracking-[0.28em] text-brand-offwhite/42">Click to open</div>
-          </div>
-        </div>
+            <div className="relative flex flex-col items-center gap-6">
+              <button
+                type="button"
+                onClick={activateTerminal}
+                disabled={splittingEntry}
+                className="group relative flex h-52 w-52 items-center justify-center rounded-full border border-brand-gold-warm/40 bg-black/30 outline-none transition-transform duration-300 hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-brand-gold sm:h-64 sm:w-64"
+                aria-label="Open terminal"
+              >
+                <Terminal size={96} className="text-brand-gold" aria-hidden="true" />
+              </button>
+              <div className={`text-center transition-opacity duration-500 ${splittingEntry ? "opacity-0" : "opacity-100"}`}>
+                <div className="font-rajdhani text-sm uppercase tracking-[0.36em] text-brand-gold-warm/80">Guided terminal</div>
+                <div className="mt-3 font-mono text-xs uppercase tracking-[0.28em] text-brand-offwhite/42">Click to open</div>
+              </div>
+            </div>
+          </>
+        )}
 
         <button
           type="button"
           onClick={scrollToInfoContent}
           disabled={splittingEntry}
-          className={`absolute bottom-6 left-1/2 flex -translate-x-1/2 items-end gap-3 text-brand-gold-warm outline-none transition-opacity duration-500 hover:text-brand-gold focus-visible:ring-2 focus-visible:ring-brand-gold ${splittingEntry ? "pointer-events-none opacity-0" : "opacity-80"}`}
+          className={`absolute bottom-6 left-1/2 flex -translate-x-1/2 items-end gap-3 text-brand-gold-warm outline-none transition-opacity duration-500 hover:text-brand-gold focus-visible:ring-2 focus-visible:ring-brand-gold ${entryStage !== "intro" ? "pointer-events-none opacity-0" : "opacity-80"}`}
           aria-label="Scroll to site information"
         >
           <span className="pb-3 font-mono text-[10px] uppercase tracking-[0.28em] text-brand-offwhite/35">Scroll</span>
@@ -576,25 +623,35 @@ export default function ChatWidget() {
       <div className="sr-only" aria-live="polite">{entryComplete ? "Terminal is ready." : "Terminal is loading."}</div>
       <div id={statusSummaryId} className="sr-only" aria-live="polite">{screenReaderStatus}</div>
 
-      {entryComplete && <div
+      {/* Mounted (hidden) as soon as the entry sequence starts so the panel
+          hydrates behind the theater and the particle frame can measure it.
+          Opacity-only reveal: a transform here would shift the framed rect. */}
+      {entryStage !== "intro" && <div
         ref={terminalPanelRef}
         tabIndex={-1}
-        className={`relative mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col gap-6 transition-all duration-700 ${terminalVisible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}
+        aria-hidden={!entryComplete}
+        className={`relative z-40 mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col gap-6 transition-opacity duration-700 ${terminalVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
       >
-        <header className="flex items-center justify-between gap-4 text-xs uppercase tracking-[0.28em] text-brand-gold-warm/80">
-          <div className="flex items-center gap-3">
-            <Terminal size={32} className="text-brand-gold" aria-hidden="true" />
-            <div className="hidden sm:block">
-              <div>Guided terminal</div>
+        {/* The chaos entry's particle frame carries the identity; the header
+            would compete with it, so it only renders on the plain path. */}
+        {!entryLogoSrc && (
+          <header className="flex items-center justify-between gap-4 text-xs uppercase tracking-[0.28em] text-brand-gold-warm/80">
+            <div className="flex items-center gap-3">
+              <Terminal size={32} className="text-brand-gold" aria-hidden="true" />
+              <div className="hidden sm:block">
+                <div>Guided terminal</div>
+              </div>
             </div>
-          </div>
             <div className="rounded-full border border-brand-gold-warm/30 px-4 py-2 text-brand-gold" aria-live="polite">
-            {intakeComplete ? currentModeName : "Guided intake"}
-          </div>
-        </header>
+              {intakeComplete ? currentModeName : "Guided intake"}
+            </div>
+          </header>
+        )}
 
         <section className="grid flex-1 gap-6 lg:grid-cols-[0.75fr_1.25fr]">
-          <aside className="flex flex-col justify-end rounded-3xl border border-brand-gold-warm/20 bg-black/20 p-6 shadow-2xl shadow-black/30 backdrop-blur">
+          <aside className={entryLogoSrc
+            ? "flex flex-col justify-end p-6"
+            : "flex flex-col justify-end rounded-3xl border border-brand-gold-warm/20 bg-black/20 p-6 shadow-2xl shadow-black/30 backdrop-blur"}>
             <p className="font-rajdhani text-sm uppercase tracking-[0.32em] text-brand-gold-warm/80">
               Guided terminal
             </p>
@@ -612,21 +669,47 @@ export default function ChatWidget() {
             </p>
           </aside>
 
-          <section className="flex min-h-[620px] flex-col overflow-hidden rounded-3xl border border-brand-gold-warm/25 bg-[#0d0c10]/95 font-mono text-sm shadow-2xl shadow-black/40" aria-label="Guided terminal session" aria-describedby={statusSummaryId}>
-            <div className="flex items-center justify-between border-b border-brand-gold-warm/20 bg-white/[0.03] px-5 py-4">
-              <div className="flex items-center gap-3 text-brand-gold">
-                <Terminal size={18} aria-hidden="true" />
-              <span className="font-semibold tracking-[0.18em]" translate="no">TERMINAL</span>
+          <section
+            ref={terminalFrameRef}
+            className={`flex min-h-[620px] flex-col overflow-hidden font-mono text-sm ${entryLogoSrc
+              ? "bg-[#1c1a20]/95"
+              : "rounded-3xl border border-brand-gold-warm/25 bg-[#0d0c10]/95 shadow-2xl shadow-black/40"}`}
+            aria-label="Guided terminal session"
+            aria-describedby={statusSummaryId}
+          >
+            {/* Chaos path: title bar matches the boot overlay it crossfades with. */}
+            <div className={`flex items-center justify-between border-b border-brand-gold-warm/20 ${entryLogoSrc ? "px-4 py-2.5" : "bg-white/[0.03] px-5 py-4"}`}>
+              {entryLogoSrc ? (
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-brand-gold" />
+                  <span className="h-2 w-2 rounded-full bg-brand-gold-warm" />
+                  <span className="h-2 w-2 rounded-full bg-brand-sage" />
+                  <span className="ml-2 text-[10px] uppercase tracking-[0.2em] text-brand-gold-warm/50" translate="no">
+                    {deployment?.identity.short_name || "Guided"} — terminal
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 text-brand-gold">
+                  <Terminal size={18} aria-hidden="true" />
+                  <span className="font-semibold tracking-[0.18em]" translate="no">TERMINAL</span>
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                {entryLogoSrc && (
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-brand-gold/80" aria-live="polite">
+                    {intakeComplete ? currentModeName : "Guided intake"}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowStatusInfo((value) => !value)}
+                  className="rounded-full px-2 py-1 text-xs tracking-[0.2em] text-brand-offwhite/70 transition-colors hover:text-brand-gold"
+                  aria-expanded={showStatusInfo}
+                  aria-controls={statusPanelId}
+                >
+                  Status: <span className={connectionStatusClass[connectionStatus]}>{connectionStatusLabel[connectionStatus]}</span>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowStatusInfo((value) => !value)}
-                className="rounded-full px-2 py-1 text-xs tracking-[0.2em] text-brand-offwhite/70 transition-colors hover:text-brand-gold"
-                aria-expanded={showStatusInfo}
-                aria-controls={statusPanelId}
-              >
-                Status: <span className={connectionStatusClass[connectionStatus]}>{connectionStatusLabel[connectionStatus]}</span>
-              </button>
             </div>
 
             <div
