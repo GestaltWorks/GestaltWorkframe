@@ -59,6 +59,13 @@ export default function ChatWidget() {
   const [terminalSessionId] = useState(createTerminalSessionId);
   const [showStatusInfo, setShowStatusInfo] = useState(false);
   const [deployment, setDeployment] = useState<PublicDeploymentConfig | null>(null);
+  // True once the chaos entry sequence starts this visit.
+  const [theaterRan, setTheaterRan] = useState(false);
+  // Boot theater typed inside the real terminal transcript after the chaos
+  // entry frames it; the intake pops in once the boot text completes.
+  const [bootText, setBootText] = useState("");
+  const [bootDone, setBootDone] = useState(false);
+  const bootTimerRef = useRef<number | null>(null);
 
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const terminalPanelRef = useRef<HTMLDivElement>(null);
@@ -204,6 +211,45 @@ export default function ChatWidget() {
   useEffect(() => {
     if (entryStage === "done") terminalPanelRef.current?.focus();
   }, [entryStage]);
+
+  // Type the boot lines inside the real terminal transcript once the chaos
+  // entry frames it; the greeting and intake pop in when the text completes.
+  useEffect(() => {
+    if (entryStage !== "done" || bootDone || !theaterRan) return;
+    let line = 0;
+    let ch = 0;
+    let out = "";
+    bootTimerRef.current = window.setInterval(() => {
+      if (line >= configuredBootLines.length) {
+        if (bootTimerRef.current) window.clearInterval(bootTimerRef.current);
+        window.setTimeout(() => setBootDone(true), 250);
+        return;
+      }
+      const current = configuredBootLines[line];
+      if (ch < current.length) {
+        out += current[ch++];
+      } else {
+        line++;
+        ch = 0;
+        if (line < configuredBootLines.length) out += "\n";
+      }
+      setBootText(out);
+    }, 12);
+    return () => {
+      if (bootTimerRef.current) window.clearInterval(bootTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryStage, theaterRan]);
+
+  const skipBoot = () => {
+    if (bootDone || !theaterRan) return;
+    if (bootTimerRef.current) window.clearInterval(bootTimerRef.current);
+    setBootText(configuredBootLines.join("\n"));
+    setBootDone(true);
+  };
+
+  // Sessions without the theater have no boot to wait for.
+  const bootFinished = bootDone || !theaterRan;
 
   const sendChatTurn = async (
     promptText: string,
@@ -543,10 +589,11 @@ export default function ChatWidget() {
             logoAlt={`${deployment?.identity.short_name || "Terminal"} mark`}
             label="Guided terminal"
             sublabel="Click to open"
-            frameLabel={`${deployment?.identity.short_name || "Guided"} — terminal`}
-            bootLines={configuredBootLines}
             frameTargetRef={terminalFrameRef}
-            onSequenceStart={() => setEntryStage("splitting")}
+            onSequenceStart={() => {
+              setTheaterRan(true);
+              setEntryStage("splitting");
+            }}
             onReady={() => setEntryStage("done")}
           />
         ) : (
@@ -721,7 +768,15 @@ export default function ChatWidget() {
               role="region"
               aria-label="Terminal interaction area"
               className="flex-1 overflow-y-auto p-5 sm:p-7"
+              onClick={skipBoot}
             >
+              {/* Boot theater typed in the real transcript; click completes it. */}
+              {theaterRan && bootText && (
+                <div className="mb-6 whitespace-pre-wrap text-brand-gold-warm" aria-hidden={bootFinished}>
+                  {bootText}
+                  {!bootFinished && <span className="ml-0.5 inline-block w-[0.6em] animate-pulse bg-brand-gold">&nbsp;</span>}
+                </div>
+              )}
               {showStatusInfo && (
                 <div id={statusPanelId} className="mb-6 rounded-2xl border border-brand-gold-warm/15 bg-black/25 p-4 text-xs text-brand-offwhite/72">
                   <div className="uppercase tracking-[0.22em] text-brand-offwhite/38">Terminal status</div>
@@ -733,15 +788,15 @@ export default function ChatWidget() {
                 </div>
               )}
 
-              <div className="space-y-1 text-brand-offwhite/86">
+              {bootFinished && <div className="space-y-1 text-brand-offwhite/86">
                 {openingLines.map((line, index) => (
                   <div key={`${line}-${index}`} className={line ? "" : "h-4"}>
                     {line && <span className="text-brand-gold-warm">&gt;</span>} {line}
                   </div>
                 ))}
-              </div>
+              </div>}
 
-              {!intakeComplete && currentQuestion && (
+              {bootFinished && !intakeComplete && currentQuestion && (
                 <form className="mt-8 space-y-5 text-brand-offwhite/86" onSubmit={(event) => { event.preventDefault(); advanceIntake(); }}>
                   <div className="text-xs uppercase tracking-[0.28em] text-brand-gold-warm">
                     Intake {intakeStep + 1}/{intakeQuestions.length}
@@ -793,7 +848,7 @@ export default function ChatWidget() {
                 </form>
               )}
 
-              {intakeComplete && messages.length === 0 && (
+              {bootFinished && intakeComplete && messages.length === 0 && (
                 <div className="mt-8 text-brand-offwhite/45">
                   &gt; Initialize session ({modes.find((mode) => mode.id === selectedMode)?.name || selectedMode})...
                   <br />&gt; Ready for input.
