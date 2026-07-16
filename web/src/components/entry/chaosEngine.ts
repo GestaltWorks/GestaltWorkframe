@@ -231,7 +231,7 @@ export class ChaosEngine {
     this.ctx = ctx;
     this.colors = { ...DEFAULT_COLORS, ...options.colors };
     this.n = options.particleCount ?? 9000;
-    this.fractalHoldMs = options.fractalHoldMs ?? 2200;
+    this.fractalHoldMs = options.fractalHoldMs ?? 3500;
     this.onPhase = options.onPhase;
 
     this.px = new Float32Array(this.n);
