@@ -10,6 +10,8 @@ export type ChaosEntryProps = {
   /** Uppercase label under the mark, e.g. the deployment's terminal name. */
   label?: string;
   sublabel?: string;
+  /** Title shown in the boot overlay's bar; defaults to `label`. */
+  frameLabel?: string;
   /** Lines typed inside the frame once it settles. */
   bootLines?: string[];
   /** How long the fractal rests before the frame arrives. */
@@ -63,6 +65,7 @@ export default function ChaosEntry({
   logoAlt,
   label,
   sublabel,
+  frameLabel,
   bootLines = [],
   fractalHoldMs,
   frameTargetRef,
@@ -262,8 +265,8 @@ export default function ChaosEntry({
             <span className="h-2 w-2 rounded-full bg-brand-gold" />
             <span className="h-2 w-2 rounded-full bg-brand-gold-warm" />
             <span className="h-2 w-2 rounded-full bg-brand-sage" />
-            {label ? (
-              <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.2em] text-brand-gold-warm/50">{label}</span>
+            {frameLabel ?? label ? (
+              <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.2em] text-brand-gold-warm/50">{frameLabel ?? label}</span>
             ) : null}
           </div>
           <div className="whitespace-pre-wrap p-5 font-mono text-xs leading-7 text-brand-gold-warm sm:text-sm">

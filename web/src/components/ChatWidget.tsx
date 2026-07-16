@@ -539,6 +539,7 @@ export default function ChatWidget() {
             logoAlt={`${deployment?.identity.short_name || "Terminal"} mark`}
             label="Guided terminal"
             sublabel="Click to open"
+            frameLabel={`${deployment?.identity.short_name || "Guided"} — terminal`}
             bootLines={configuredBootLines}
             frameTargetRef={terminalFrameRef}
             onSequenceStart={() => setEntryStage("splitting")}
