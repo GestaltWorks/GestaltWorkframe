@@ -30,6 +30,9 @@ OPENROUTER_MODEL = "OPENROUTER_MODEL"
 
 ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
 ANTHROPIC_MODEL = "ANTHROPIC_MODEL"
+# Optional Anthropic-compatible gateway (e.g. a LiteLLM key broker); unset
+# keeps the SDK's default api.anthropic.com host.
+ANTHROPIC_BASE_URL = "ANTHROPIC_BASE_URL"
 
 LOCAL_LLM_BASE_URL = "LOCAL_LLM_BASE_URL"
 LOCAL_LLM_MODEL = "LOCAL_LLM_MODEL"

@@ -208,7 +208,12 @@ class OpenAICompatibleProvider(LLMProvider):
             normalized_models = {_normalize_model_id(model) for model in models}
             return {
                 "endpoint_healthy": endpoint_healthy,
-                "model_available": endpoint_healthy and (not models or _normalize_model_id(self.model) in normalized_models),
+                # An empty configured model can never serve chat, no matter how
+                # healthy the endpoint looks; without this the route reported
+                # callable while every completion failed on the blank model id.
+                "model_available": bool(self.model)
+                and endpoint_healthy
+                and (not models or _normalize_model_id(self.model) in normalized_models),
                 "available_models": models,
             }
         except Exception:
@@ -291,14 +296,24 @@ class ClaudeProvider(LLMProvider):
         api_key: str,
         model: str = "claude-haiku-4-5-20251001",
         params: GenerationParams | None = None,
+        base_url: str | None = None,
     ):
-        self.client = AsyncAnthropic(api_key=api_key)
+        # base_url routes requests through an Anthropic-compatible gateway
+        # (e.g. a LiteLLM key broker); unset keeps the SDK's default host.
+        self.base_url = base_url or None
+        self.client = AsyncAnthropic(**self._client_kwargs(api_key))
         self.model = model
         self.params = params or GenerationParams(max_tokens=4096)
 
+    def _client_kwargs(self, api_key: str) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if self.base_url:
+            kwargs["base_url"] = self.base_url
+        return kwargs
+
     async def update_api_key(self, new_key: str) -> None:
         """Replace the Anthropic client with one using the new key."""
-        self.client = AsyncAnthropic(api_key=new_key)
+        self.client = AsyncAnthropic(**self._client_kwargs(new_key))
 
     def _message_params(self, messages: list[Message]) -> dict[str, Any]:
         system_parts = []
