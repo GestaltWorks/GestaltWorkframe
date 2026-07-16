@@ -52,10 +52,11 @@ function readBrandColors(): Partial<ChaosColors> {
 }
 
 /**
- * Entry theater for the guided terminal: the deployment's logo mark bursts
- * into a random fractal attractor, holds, then its particles converge into a
- * frame around the terminal panel while boot lines type. Purely presentational
- * — the parent owns when the real terminal mounts and becomes interactive.
+ * Entry theater for the guided terminal: the deployment's logo mark assembles
+ * from particle dust, idles alive, and on click bursts into a random fractal
+ * attractor, holds, then converges into a frame around the terminal panel
+ * while boot lines type. Purely presentational — the parent owns when the
+ * real terminal mounts and becomes interactive.
  */
 export default function ChaosEntry({
   logoSrc,
@@ -75,13 +76,17 @@ export default function ChaosEntry({
   const engineRef = useRef<ChaosEngine | null>(null);
   const typeTimerRef = useRef<number | null>(null);
   const readyTimerRef = useRef<number | null>(null);
-  const [stage, setStage] = useState<"mark" | "running" | "framed">("mark");
+  const [stage, setStage] = useState<"mark" | "running" | "framed" | "handoff">("mark");
+  const [particlesLive, setParticlesLive] = useState(false);
   const [attractorName, setAttractorName] = useState("");
   const [typedText, setTypedText] = useState("");
   const [frameBox, setFrameBox] = useState<DOMRect | null>(null);
 
   const finishSoon = useCallback(() => {
-    readyTimerRef.current = window.setTimeout(() => onReady?.(), READY_PAUSE_MS);
+    readyTimerRef.current = window.setTimeout(() => {
+      onReady?.();
+      setStage("handoff");
+    }, READY_PAUSE_MS);
   }, [onReady]);
 
   const typeBootLines = useCallback(() => {
@@ -113,6 +118,7 @@ export default function ChaosEntry({
   const handlePhase = useCallback(
     (phase: EntryPhase, name: string) => {
       setAttractorName(name);
+      if (phase === "logo") setParticlesLive(true);
       if (phase === "framed") {
         setStage("framed");
         setFrameBox(frameTargetRef?.current?.getBoundingClientRect() ?? defaultFrameRect());
@@ -123,36 +129,56 @@ export default function ChaosEntry({
     [frameTargetRef, onFramed, typeBootLines],
   );
 
-  const ignite = () => {
-    if (stage !== "mark") return;
-    onSequenceStart?.();
-
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // assemble the mark from particle dust as soon as the logo pixels arrive
+  useEffect(() => {
     const canvas = canvasRef.current;
     const logo = logoRef.current;
-    if (reducedMotion || !canvas || !logo || !logo.complete || logo.naturalWidth === 0) {
-      onFramed?.();
-      onReady?.();
+    if (!canvas || !logo) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    let cancelled = false;
+    const start = () => {
+      if (cancelled || engineRef.current) return;
+      try {
+        const engine = new ChaosEngine({
+          canvas,
+          colors: { ...readBrandColors(), ...colors },
+          fractalHoldMs,
+          onPhase: handlePhase,
+        });
+        engine.assemble(
+          logo,
+          () => logo.getBoundingClientRect(),
+          () => frameTargetRef?.current?.getBoundingClientRect() ?? defaultFrameRect(),
+        );
+        engineRef.current = engine;
+      } catch {
+        /* unreadable logo pixels: the static mark stays and clicks skip the theater */
+      }
+    };
+
+    if (logo.complete && logo.naturalWidth > 0) start();
+    else logo.addEventListener("load", start);
+    return () => {
+      cancelled = true;
+      logo.removeEventListener("load", start);
+    };
+    // engine lifetime is mount-scoped; options are read once at ignition
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const ignite = () => {
+    if (stage !== "mark") return;
+    if (engineRef.current?.burstToFractal()) {
+      onSequenceStart?.();
+      setStage("running");
       return;
     }
-
-    try {
-      const engine = new ChaosEngine({
-        canvas,
-        colors: { ...readBrandColors(), ...colors },
-        fractalHoldMs,
-        onPhase: handlePhase,
-      });
-      engine.ignite(logo, logo.getBoundingClientRect(), () =>
-        frameTargetRef?.current?.getBoundingClientRect() ?? defaultFrameRect(),
-      );
-      engineRef.current = engine;
-      setStage("running");
-    } catch {
-      // unreadable logo pixels (taint) or no canvas: reveal without theater
-      onFramed?.();
-      onReady?.();
-    }
+    // reduced motion or no engine: reveal without theater
+    onSequenceStart?.();
+    onFramed?.();
+    onReady?.();
+    setStage("handoff");
   };
 
   useEffect(() => {
@@ -163,12 +189,26 @@ export default function ChaosEntry({
     };
   }, []);
 
+  // keep the boot overlay glued to the frame when the page moves under it
+  useEffect(() => {
+    if (stage !== "framed") return;
+    const update = () =>
+      setFrameBox(frameTargetRef?.current?.getBoundingClientRect() ?? defaultFrameRect());
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, { passive: true });
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update);
+    };
+  }, [stage, frameTargetRef]);
+
+  // the engine traces viewport-space rects, so the canvas must be viewport-fixed
   return (
     <div className="absolute inset-0">
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
+      <canvas ref={canvasRef} className="pointer-events-none fixed inset-0 z-0 h-full w-full" aria-hidden="true" />
 
       <div
-        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+        className={`absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-300 ${
           stage === "mark" ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
@@ -179,9 +219,15 @@ export default function ChaosEntry({
             className="group outline-none transition-transform duration-300 hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-brand-gold"
             aria-label="Open terminal"
           >
-            {/* Sampled at natural resolution on click; plain img keeps pixels readable. */}
+            {/* Sampled at natural resolution; fades out once particles assemble. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img ref={logoRef} src={logoSrc} alt={logoAlt} className="h-52 w-auto sm:h-64" draggable={false} />
+            <img
+              ref={logoRef}
+              src={logoSrc}
+              alt={logoAlt}
+              draggable={false}
+              className={`h-52 w-auto transition-opacity duration-500 sm:h-64 ${particlesLive ? "opacity-0" : "opacity-100"}`}
+            />
           </button>
           {label ? (
             <div className="text-center">
@@ -200,14 +246,16 @@ export default function ChaosEntry({
       </div>
 
       {stage === "running" && attractorName ? (
-        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 font-mono text-[10px] uppercase tracking-[0.28em] text-brand-gold-warm/55">
+        <div className="pointer-events-none absolute bottom-6 left-1/2 z-10 -translate-x-1/2 font-mono text-[10px] uppercase tracking-[0.28em] text-brand-gold-warm/55">
           {attractorName}
         </div>
       ) : null}
 
-      {stage === "framed" && frameBox ? (
+      {(stage === "framed" || stage === "handoff") && frameBox ? (
         <div
-          className="pointer-events-none absolute overflow-hidden bg-brand-dark/85"
+          className={`pointer-events-none fixed z-20 overflow-hidden bg-[#1c1a20]/95 transition-opacity duration-500 ${
+            stage === "handoff" ? "opacity-0" : "opacity-100"
+          }`}
           style={{ left: frameBox.left, top: frameBox.top, width: frameBox.width, height: frameBox.height }}
         >
           <div className="flex items-center gap-2 border-b border-brand-gold-warm/20 px-4 py-2.5">

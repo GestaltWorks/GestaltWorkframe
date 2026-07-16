@@ -29,6 +29,18 @@ export const openingLines = [
 export const anthillFillBottom = 72;
 export const anthillFillHeight = 54;
 
+// Typed inside the particle frame while the terminal mounts behind it.
+// Brand-neutral defaults; deployments override via their copy bundle.
+export const entryBootLines = [
+  "$ terminal init",
+  "  loading guided intake ......... ok",
+  "  connecting providers .......... ok",
+  "",
+  "> A few guided prompts shape the session.",
+  "",
+  "$ ",
+];
+
 export const defaultModes: Mode[] = [
   { id: "pipeline", name: "Service Inquiry", description: "" },
   { id: "automator", name: "Automator Assistance", description: "" },

@@ -10,7 +10,7 @@
  * strange attractors (Clifford / De Jong) iterated directly.
  */
 
-export type EntryPhase = "burst" | "fractal" | "framing" | "framed";
+export type EntryPhase = "logo" | "burst" | "fractal" | "framing" | "framed";
 
 export type ChaosColors = {
   dark: string;
@@ -193,9 +193,13 @@ export class ChaosEngine {
   private logoOrder: Uint32Array;            // particle indices grouped by logo bucket
   private readonly groupStyles: string[];
 
-  /** Internal machine: idle -> burst -> converge -> (fractal | framed). */
-  private phase: "idle" | "burst" | "converge" | "fractal" | "framed" = "idle";
-  private heading: "fractal" | "frame" = "fractal";
+  /** Internal machine: idle -> converge -> logo -> burst -> converge -> fractal -> burst -> converge -> framed. */
+  private phase: "idle" | "burst" | "converge" | "logo" | "fractal" | "framed" = "idle";
+  private heading: "logo" | "fractal" | "frame" = "logo";
+  /** Logo pixel coordinates, normalized 0..1 so resizes can re-lay them out. */
+  private readonly logoNX: Float32Array;
+  private readonly logoNY: Float32Array;
+  private getLogoRect: (() => DOMRect) | null = null;
   private phaseStart = 0;
   private attractor: Attractor = ATTRACTORS[0];
 
@@ -209,6 +213,16 @@ export class ChaosEngine {
   private rafId = 0;
   private destroyed = false;
   private readonly handleResize = () => this.refit();
+  /** The particles hug live elements; follow them when the page scrolls. */
+  private readonly handleScroll = () => {
+    if (this.phase === "framed") {
+      this.setFrameTargets();
+      this.snapToTargets();
+    } else if (this.phase === "logo") {
+      this.setLogoTargets();
+      this.snapToTargets();
+    }
+  };
 
   constructor(options: ChaosEngineOptions) {
     this.canvas = options.canvas;
@@ -232,6 +246,8 @@ export class ChaosEngine {
     this.logoBucket = new Uint8Array(this.n);
     this.seed = new Float32Array(this.n);
     this.logoOrder = new Uint32Array(this.n);
+    this.logoNX = new Float32Array(this.n);
+    this.logoNY = new Float32Array(this.n);
 
     this.groupStyles = [
       withAlpha(this.colors.gold, 0.55),
@@ -242,6 +258,7 @@ export class ChaosEngine {
 
     this.resizeCanvas();
     window.addEventListener("resize", this.handleResize);
+    window.addEventListener("scroll", this.handleScroll, { passive: true });
   }
 
   get attractorName(): string {
@@ -249,47 +266,67 @@ export class ChaosEngine {
   }
 
   /**
-   * Start the sequence: sample the logo image, spawn particles in place over
-   * `logoRect` (CSS pixels), burst toward a random attractor, then converge
-   * into a frame around `getFrameRect`.
+   * Sample the logo image and assemble it from scattered particles over the
+   * rect reported by `getLogoRect` (CSS pixels). The logo then idles as a
+   * living particle field until `burstToFractal()` is called.
    *
    * Throws if the image pixels are unreadable (e.g. cross-origin taint);
    * callers should catch and fall back to a non-animated reveal.
    */
-  ignite(logo: HTMLImageElement, logoRect: DOMRect, getFrameRect: () => DOMRect): void {
+  assemble(logo: HTMLImageElement, getLogoRect: () => DOMRect, getFrameRect: () => DOMRect): void {
+    this.getLogoRect = getLogoRect;
     this.getFrameRect = getFrameRect;
-    this.sampleLogo(logo, logoRect);
+    this.sampleLogo(logo);
+    this.setLogoTargets();
+    for (let i = 0; i < this.n; i++) {
+      this.px[i] = Math.random() * this.width;
+      this.py[i] = Math.random() * this.height;
+      this.vx[i] = 0;
+      this.vy[i] = 0;
+    }
+    this.heading = "logo";
+    this.setPhase("converge");
+    if (!this.rafId) this.rafId = requestAnimationFrame(this.frame);
+  }
 
-    const index = pickAttractorIndex();
-    this.attractor = ATTRACTORS[index];
+  /** Click handler entry: detonate the idling logo into a random attractor. */
+  burstToFractal(): boolean {
+    if (this.phase !== "logo" || !this.getLogoRect) return false;
+    const rect = this.getLogoRect();
+    this.attractor = ATTRACTORS[pickAttractorIndex()];
     this.generateFractalTargets();
     this.heading = "fractal";
     this.beginBurst(
-      (logoRect.left + logoRect.width / 2) * this.dpr,
-      (logoRect.top + logoRect.height / 2) * this.dpr,
+      (rect.left + rect.width / 2) * this.dpr,
+      (rect.top + rect.height / 2) * this.dpr,
     );
-
-    if (!this.rafId) this.rafId = requestAnimationFrame(this.frame);
+    return true;
   }
 
   /** Recompute canvas size and current targets (e.g. after window resize). */
   refit(): void {
     this.resizeCanvas();
     if (this.phase === "idle") return;
-    if (this.heading === "fractal") this.fitFractalToScreen();
+    if (this.heading === "logo") this.setLogoTargets();
+    else if (this.heading === "fractal") this.fitFractalToScreen();
     else this.setFrameTargets();
-    if (this.phase === "fractal" || this.phase === "framed") {
-      for (let i = 0; i < this.n; i++) {
-        this.px[i] = this.tx[i];
-        this.py[i] = this.ty[i];
-      }
-    }
+    if (this.phase === "logo" || this.phase === "fractal" || this.phase === "framed") this.snapToTargets();
   }
 
   destroy(): void {
     this.destroyed = true;
     if (this.rafId) cancelAnimationFrame(this.rafId);
     window.removeEventListener("resize", this.handleResize);
+    window.removeEventListener("scroll", this.handleScroll);
+  }
+
+  private snapToTargets(): void {
+    for (let i = 0; i < this.n; i++) {
+      this.px[i] = this.tx[i];
+      this.py[i] = this.ty[i];
+      this.vx[i] = 0;
+      this.vy[i] = 0;
+    }
   }
 
   private resizeCanvas(): void {
@@ -310,7 +347,20 @@ export class ChaosEngine {
     this.ctx.fillRect(0, 0, this.width, this.height);
   }
 
-  private sampleLogo(logo: HTMLImageElement, logoRect: DOMRect): void {
+  private setLogoTargets(): void {
+    if (!this.getLogoRect) return;
+    const rect = this.getLogoRect();
+    const originX = rect.left * this.dpr;
+    const originY = rect.top * this.dpr;
+    const w = rect.width * this.dpr;
+    const h = rect.height * this.dpr;
+    for (let i = 0; i < this.n; i++) {
+      this.tx[i] = originX + this.logoNX[i] * w;
+      this.ty[i] = originY + this.logoNY[i] * h;
+    }
+  }
+
+  private sampleLogo(logo: HTMLImageElement): void {
     const iw = logo.naturalWidth;
     const ih = logo.naturalHeight;
     const off = document.createElement("canvas");
@@ -330,21 +380,17 @@ export class ChaosEngine {
     }
     if (visible.length === 0) throw new Error("ChaosEngine: logo image has no visible pixels");
 
-    // spawn each particle on a random visible logo pixel, in screen space
+    // place each particle on a random visible logo pixel, in normalized space
     const bucketOf = new Map<number, number>();
     const bucketSum: number[][] = [];
-    const originX = logoRect.left * this.dpr;
-    const originY = logoRect.top * this.dpr;
-    const scaleX = (logoRect.width * this.dpr) / iw;
-    const scaleY = (logoRect.height * this.dpr) / ih;
 
     for (let i = 0; i < this.n; i++) {
       const o = visible[Math.floor(Math.random() * visible.length)];
       const pixelIndex = o / 4;
       const x = pixelIndex % iw;
       const y = Math.floor(pixelIndex / iw);
-      this.px[i] = originX + (x + Math.random() * 0.6) * scaleX;
-      this.py[i] = originY + (y + Math.random() * 0.6) * scaleY;
+      this.logoNX[i] = (x + Math.random() * 0.6) / iw;
+      this.logoNY[i] = (y + Math.random() * 0.6) / ih;
       this.seed[i] = Math.random();
 
       const r = data[o], g = data[o + 1], b = data[o + 2];
@@ -490,11 +536,11 @@ export class ChaosEngine {
     this.setPhase("burst");
   }
 
-  private setPhase(phase: "burst" | "converge" | "fractal" | "framed"): void {
+  private setPhase(phase: "burst" | "converge" | "logo" | "fractal" | "framed"): void {
     this.phase = phase;
     this.phaseStart = performance.now();
     // public phase names: the converge toward the frame reads as "framing";
-    // the converge toward the fractal is still part of the burst, theatrically
+    // converges toward the logo or fractal are part of the assembly/burst
     if (phase === "converge") {
       if (this.heading === "frame") this.onPhase?.("framing", this.attractor.name);
       return;
@@ -504,13 +550,8 @@ export class ChaosEngine {
 
   private settle(): void {
     this.hardClear();
-    for (let i = 0; i < this.n; i++) {
-      this.px[i] = this.tx[i];
-      this.py[i] = this.ty[i];
-      this.vx[i] = 0;
-      this.vy[i] = 0;
-    }
-    this.setPhase(this.heading === "fractal" ? "fractal" : "framed");
+    this.snapToTargets();
+    this.setPhase(this.heading === "logo" ? "logo" : this.heading === "fractal" ? "fractal" : "framed");
   }
 
   private liveShimmer(): void {
@@ -562,7 +603,7 @@ export class ChaosEngine {
     this.rafId = requestAnimationFrame(this.frame);
     if (this.phase === "idle") return;
 
-    const resting = this.phase === "framed";
+    const resting = this.phase === "framed" || this.phase === "logo";
     this.ctx.globalCompositeOperation = "source-over";
     this.ctx.fillStyle = withAlpha(
       this.colors.dark,
@@ -572,7 +613,15 @@ export class ChaosEngine {
 
     const elapsed = now - this.phaseStart;
 
-    if (this.phase === "burst") {
+    if (this.phase === "logo") {
+      // gentle breathing so the assembled mark reads as alive
+      const t = now * 0.0012;
+      for (let i = 0; i < this.n; i++) {
+        const s = this.seed[i];
+        this.px[i] = this.tx[i] + Math.sin(t + s * 7) * 0.3 * this.dpr;
+        this.py[i] = this.ty[i] + Math.cos(t * 1.3 + s * 11) * 0.3 * this.dpr;
+      }
+    } else if (this.phase === "burst") {
       for (let i = 0; i < this.n; i++) {
         this.px[i] += this.vx[i];
         this.py[i] += this.vy[i];
