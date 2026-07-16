@@ -1,0 +1,9 @@
+name: Eudai Gestalt Integrations
+colors:
+  primary_dark: "#242128"
+  accent: "#DCD077"
+  off_white: "#F5F5F5"
+fonts:
+  heading: Rajdhani
+  body: Inter
+logo_path: /brand/egi-mark.png
