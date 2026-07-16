@@ -292,14 +292,11 @@ export class ChaosEngine {
   /** Click handler entry: detonate the idling logo into a random attractor. */
   burstToFractal(): boolean {
     if (this.phase !== "logo" || !this.getLogoRect) return false;
-    const rect = this.getLogoRect();
+    const box = this.canvasLocal(this.getLogoRect());
     this.attractor = ATTRACTORS[pickAttractorIndex()];
     this.generateFractalTargets();
     this.heading = "fractal";
-    this.beginBurst(
-      (rect.left + rect.width / 2) * this.dpr,
-      (rect.top + rect.height / 2) * this.dpr,
-    );
+    this.beginBurst(box.x + box.w / 2, box.y + box.h / 2);
     return true;
   }
 
@@ -337,6 +334,21 @@ export class ChaosEngine {
   }
 
   /**
+   * Convert a viewport-space rect into canvas-local device pixels. The canvas
+   * is page-anchored (it must scroll away with the entry, never curtain the
+   * content below it), so targets are measured relative to the canvas itself.
+   */
+  private canvasLocal(rect: DOMRect): { x: number; y: number; w: number; h: number } {
+    const anchor = this.canvas.getBoundingClientRect();
+    return {
+      x: (rect.left - anchor.left) * this.dpr,
+      y: (rect.top - anchor.top) * this.dpr,
+      w: rect.width * this.dpr,
+      h: rect.height * this.dpr,
+    };
+  }
+
+  /**
    * Repeated low-alpha fades plateau on an 8-bit canvas and leave a ghost of
    * bright pixels; a hard repaint at phase boundaries erases it while the
    * burst masks the cut.
@@ -349,14 +361,10 @@ export class ChaosEngine {
 
   private setLogoTargets(): void {
     if (!this.getLogoRect) return;
-    const rect = this.getLogoRect();
-    const originX = rect.left * this.dpr;
-    const originY = rect.top * this.dpr;
-    const w = rect.width * this.dpr;
-    const h = rect.height * this.dpr;
+    const box = this.canvasLocal(this.getLogoRect());
     for (let i = 0; i < this.n; i++) {
-      this.tx[i] = originX + this.logoNX[i] * w;
-      this.ty[i] = originY + this.logoNY[i] * h;
+      this.tx[i] = box.x + this.logoNX[i] * box.w;
+      this.ty[i] = box.y + this.logoNY[i] * box.h;
     }
   }
 
@@ -494,11 +502,11 @@ export class ChaosEngine {
 
   private setFrameTargets(): void {
     if (!this.getFrameRect) return;
-    const rect = this.getFrameRect();
-    const x0 = rect.left * this.dpr;
-    const y0 = rect.top * this.dpr;
-    const w = rect.width * this.dpr;
-    const h = rect.height * this.dpr;
+    const box = this.canvasLocal(this.getFrameRect());
+    const x0 = box.x;
+    const y0 = box.y;
+    const w = box.w;
+    const h = box.h;
     const perimeter = 2 * (w + h);
     for (let i = 0; i < this.n; i++) {
       let s = (i / this.n) * perimeter;

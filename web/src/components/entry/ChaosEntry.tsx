@@ -74,6 +74,7 @@ export default function ChaosEntry({
   onFramed,
   onReady,
 }: ChaosEntryProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const logoRef = useRef<HTMLImageElement>(null);
   const engineRef = useRef<ChaosEngine | null>(null);
@@ -118,18 +119,28 @@ export default function ChaosEntry({
     }, TYPE_INTERVAL_MS);
   }, [bootLines, finishSoon]);
 
+  // Boot overlay coordinates are wrapper-relative so the overlay (and the
+  // page-anchored canvas behind it) scroll away with the entry instead of
+  // curtaining the site content below it.
+  const measureFrameBox = useCallback((): DOMRect => {
+    const target = frameTargetRef?.current?.getBoundingClientRect() ?? defaultFrameRect();
+    const anchor = wrapperRef.current?.getBoundingClientRect();
+    if (!anchor) return target;
+    return new DOMRect(target.left - anchor.left, target.top - anchor.top, target.width, target.height);
+  }, [frameTargetRef]);
+
   const handlePhase = useCallback(
     (phase: EntryPhase, name: string) => {
       setAttractorName(name);
       if (phase === "logo") setParticlesLive(true);
       if (phase === "framed") {
         setStage("framed");
-        setFrameBox(frameTargetRef?.current?.getBoundingClientRect() ?? defaultFrameRect());
+        setFrameBox(measureFrameBox());
         onFramed?.();
         typeBootLines();
       }
     },
-    [frameTargetRef, onFramed, typeBootLines],
+    [measureFrameBox, onFramed, typeBootLines],
   );
 
   // assemble the mark from particle dust as soon as the logo pixels arrive
@@ -192,23 +203,24 @@ export default function ChaosEntry({
     };
   }, []);
 
-  // keep the boot overlay glued to the frame when the page moves under it
+  // keep the boot overlay glued to the frame when the layout moves under it
   useEffect(() => {
     if (stage !== "framed") return;
-    const update = () =>
-      setFrameBox(frameTargetRef?.current?.getBoundingClientRect() ?? defaultFrameRect());
+    const update = () => setFrameBox(measureFrameBox());
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, { passive: true });
     return () => {
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update);
     };
-  }, [stage, frameTargetRef]);
+  }, [stage, measureFrameBox]);
 
-  // the engine traces viewport-space rects, so the canvas must be viewport-fixed
+  // Everything here is page-anchored: the canvas and overlays scroll away with
+  // the entry section rather than sitting fixed over the whole viewport (a
+  // fixed opaque canvas curtained all site content below the fold).
   return (
-    <div className="absolute inset-0">
-      <canvas ref={canvasRef} className="pointer-events-none fixed inset-0 z-0 h-full w-full" aria-hidden="true" />
+    <div ref={wrapperRef} className="absolute inset-0">
+      <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-0 h-full w-full" aria-hidden="true" />
 
       <div
         className={`absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-300 ${
@@ -256,7 +268,7 @@ export default function ChaosEntry({
 
       {(stage === "framed" || stage === "handoff") && frameBox ? (
         <div
-          className={`pointer-events-none fixed z-20 overflow-hidden bg-[#1c1a20]/95 transition-opacity duration-500 ${
+          className={`pointer-events-none absolute z-20 overflow-hidden bg-[#1c1a20]/95 transition-opacity duration-500 ${
             stage === "handoff" ? "opacity-0" : "opacity-100"
           }`}
           style={{ left: frameBox.left, top: frameBox.top, width: frameBox.width, height: frameBox.height }}
