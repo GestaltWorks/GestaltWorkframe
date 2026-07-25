@@ -1,0 +1,166 @@
+"""Task lanes: what a turn *requires*, expressed as a policy record.
+
+A lane never names a model. It states objective, machine-checkable
+requirements and a preference direction; `model_resolver` turns that into an
+ordered shortlist against the live catalog.
+
+Per `docs/standards/model-routing-policy.md`:
+
+    guide:  must:[tools], minContext:200k, minAgentic:50, minIntelligence:55, prefer:quality
+    lookup: must:[tools], minIntelligence:30, maxPromptPrice:$1/M,           prefer:cost
+
+Lanes are configuration. They live in a deployment bundle
+(`deployments/<id>/lanes.yaml`) so a deployment can retune its own standards
+without a code change, and fall back to the defaults below.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any, Literal
+
+import yaml
+from pydantic import BaseModel, Field, ValidationError
+
+logger = logging.getLogger(__name__)
+
+
+class Lane(BaseModel):
+    """One task lane. Requirements are hard filters; preference orders survivors."""
+
+    name: str
+    description: str = ""
+
+    # --- hard requirements (objective, machine-checkable) ------------------
+    must: list[str] = Field(default_factory=list)
+    """Required entries in the catalog's `supported_parameters`.
+
+    Tool-calling is a filter, never a preference: a cheap model that cannot
+    call tools is not cheap, it is broken.
+    """
+
+    min_context_tokens: int = 0
+    max_prompt_price_per_million: float | None = None
+
+    # --- quality floors (published indices, not vibes) ---------------------
+    min_intelligence: float | None = None
+    min_coding: float | None = None
+    min_agentic: float | None = None
+
+    # --- data-handling filters --------------------------------------------
+    allow_free_tier: bool = False
+    """`:free` variants generally train on submitted prompts. Opt-in only."""
+
+    allow_preview: bool = False
+    """Preview endpoints get rotated; a live session must not break on one."""
+
+    # --- ranking -----------------------------------------------------------
+    prefer: Literal["cost", "quality"] = "cost"
+    expected_input_tokens: int = 2_000
+    expected_output_tokens: int = 500
+    expected_cached_input_tokens: int = 0
+    """Declared turn shape. A lookup and a long-form build are not the same
+    turn, and ranking both on one assumed shape picks the wrong model."""
+
+    shortlist_size: int = 3
+    """How many candidates to keep for fail-sideways retries before any
+    escalation. A single pinned fallback turns a cheap provider's bad ten
+    minutes into a frontier-priced turn."""
+
+    def price_ceiling_per_token(self) -> float | None:
+        if self.max_prompt_price_per_million is None:
+            return None
+        return self.max_prompt_price_per_million / 1_000_000
+
+
+DEFAULT_LANES: tuple[Lane, ...] = (
+    Lane(
+        name="lookup",
+        description="Short factual turns, retrieval answers, classification.",
+        must=["tools"],
+        # Set just below the cheapest pinned-fallback model (29.6) on purpose:
+        # a floor of 30 excluded every fallback, so a catalog outage left the
+        # cheap lane unroutable. A lane's floor has to be reachable by the
+        # models we ship for the outage case, not only by the live catalog.
+        min_intelligence=28,
+        max_prompt_price_per_million=1.0,
+        prefer="cost",
+        expected_input_tokens=1_500,
+        expected_output_tokens=300,
+    ),
+    Lane(
+        name="guide",
+        description="Guided conversation and explanation: the default chat turn.",
+        must=["tools"],
+        min_context_tokens=200_000,
+        # Calibrated against the published distribution (2026-07-25, n=107):
+        # intelligence p50=30.3 p90=51.4 max=60.7; agentic p50=18.2 p90=44.4
+        # max=55.3. Well above median, comfortably below the ceiling, so the
+        # lane keeps a real shortlist instead of resolving to one vendor.
+        min_intelligence=45,
+        min_agentic=35,
+        prefer="quality",
+        expected_input_tokens=6_000,
+        expected_output_tokens=900,
+        expected_cached_input_tokens=4_000,
+    ),
+    Lane(
+        name="build",
+        description="Code generation and refactors judged on correctness.",
+        must=["tools", "structured_outputs"],
+        min_context_tokens=200_000,
+        min_coding=60,
+        prefer="quality",
+        expected_input_tokens=12_000,
+        expected_output_tokens=2_500,
+        expected_cached_input_tokens=8_000,
+    ),
+    Lane(
+        name="review",
+        description="Security and release-readiness review; mistakes are expensive.",
+        must=["tools", "reasoning"],
+        min_context_tokens=200_000,
+        # The top of the lane. A floor of 70 intelligence was unreachable: the
+        # published index maxes at 60.7, so the lane silently matched nothing.
+        # Floors are reviewable numbers, and reviewing one means checking it
+        # against the distribution rather than assuming a 0-100 scale.
+        min_intelligence=55,
+        min_coding=70,
+        prefer="quality",
+        expected_input_tokens=20_000,
+        expected_output_tokens=3_000,
+        expected_cached_input_tokens=12_000,
+    ),
+)
+
+
+def _lanes_path(deployment_dir: Path | None) -> Path | None:
+    if deployment_dir is None:
+        return None
+    candidate = deployment_dir / "lanes.yaml"
+    return candidate if candidate.is_file() else None
+
+
+def load_lanes(deployment_dir: Path | None = None) -> dict[str, Lane]:
+    """Load lanes from a deployment bundle, falling back to the defaults.
+
+    A malformed lane file never takes the app down: it is logged and the
+    defaults stand.
+    """
+    lanes: dict[str, Lane] = {lane.name: lane for lane in DEFAULT_LANES}
+    path = _lanes_path(deployment_dir)
+    if path is None:
+        return lanes
+    try:
+        payload: Any = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        declared = payload.get("lanes", payload) if isinstance(payload, dict) else {}
+        if not isinstance(declared, dict):
+            raise ValueError("lanes.yaml must map lane name -> lane record")
+        for name, record in declared.items():
+            if not isinstance(record, dict):
+                continue
+            lanes[str(name)] = Lane(name=str(name), **record)
+    except (OSError, ValueError, ValidationError) as exc:
+        logger.warning("lanes.yaml at %s unusable (%s); using defaults", path, exc)
+    return lanes
