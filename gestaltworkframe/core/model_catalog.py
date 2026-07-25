@@ -278,5 +278,33 @@ def load_cached_catalog_sync(
     return list(PINNED_FALLBACK)
 
 
+async def refresh_catalog_forever(
+    *,
+    interval_seconds: int = DEFAULT_TTL_SECONDS // 2,
+    cache_path: Path | None = None,
+) -> None:
+    """Keep the on-disk catalog warm for the synchronous route-selection path.
+
+    Without this the app resolves against the pinned fallback forever: the
+    sync reader never fetches, so a deployment that only wires the reader gets
+    correct-but-degraded routing against a handful of models instead of the
+    live catalog. Runs until cancelled and never propagates a fetch error.
+    """
+    import asyncio
+
+    while True:
+        try:
+            models = await fetch_catalog(cache_path=cache_path, force_refresh=True)
+            logger.info("model catalog refreshed: %d models", len(models))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # a refresh failure is never fatal
+            logger.warning("model catalog refresh failed: %s", exc)
+        try:
+            await asyncio.sleep(max(60, interval_seconds))
+        except asyncio.CancelledError:
+            raise
+
+
 def index_by_id(models: Iterable[CatalogModel]) -> dict[str, CatalogModel]:
     return {model.id: model for model in models}
