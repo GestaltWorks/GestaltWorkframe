@@ -1,4 +1,4 @@
-﻿# AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1.
+# AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1.
 
 # The kit's vendored CI floor (SPEC 2.6 + 3.2): every managed repo gets a
 # build-test job that actually exercises the code (auto-detected stack) and a
@@ -42,7 +42,7 @@ jobs:
           has_py=false
           if [ -f pyproject.toml ]; then has_py=true; fi
           # Script repos: loose .py files with no project file still get a
-          # syntax floor (compileall) â€” a SyntaxError must fail CI.
+          # syntax floor (compileall) — a SyntaxError must fail CI.
           has_loose_py=false
           if [ "$has_py" = false ] && find . -name '*.py' -not -path './.git/*' -print -quit | grep -q .; then has_loose_py=true; fi
           has_dotnet=false
@@ -58,12 +58,12 @@ jobs:
           # provision, or its dedicated CI already tests more completely) drops a
           # `.github/ci-floor-build-only` marker. The floor then verifies deps
           # RESOLVE and code COMPILES (a real, cheap floor) and defers the test
-          # RUN to that repo's CI â€” instead of duplicating it or going
+          # RUN to that repo's CI — instead of duplicating it or going
           # permanently red on fixtures it can't provision.
           build_only=false
           if [ -f .github/ci-floor-build-only ]; then build_only=true; fi
           echo "build_only=$build_only" >> "$GITHUB_OUTPUT"
-          if [ "$build_only" = true ]; then echo "::notice::ci-floor-build-only marker present â€” the repo's own CI runs the suite; the floor verifies build/resolution only."; fi
+          if [ "$build_only" = true ]; then echo "::notice::ci-floor-build-only marker present — the repo's own CI runs the suite; the floor verifies build/resolution only."; fi
           echo "detected: node=$has_node($node_dir,$pkg_mgr) python=$has_py loose_py=$has_loose_py dotnet=$has_dotnet build_only=$build_only"
           if [ "$has_node" = false ] && [ "$has_py" = false ] && [ "$has_loose_py" = false ] && [ "$has_dotnet" = false ]; then
             echo "::notice::No buildable stack detected (node/python/dotnet); build-test passes vacuously."
@@ -83,7 +83,7 @@ jobs:
           if [ "${{ steps.detect.outputs.pkg_mgr }}" = "pnpm" ]; then
             # Current pnpm 10 (matches how the repos are managed). Corepack's
             # default (10.0.0) predates ignoredBuiltDependencies and errors on
-            # these repos' workspace files â€” never rely on it.
+            # these repos' workspace files — never rely on it.
             npm install -g pnpm@10
             pnpm install --frozen-lockfile
             runner="pnpm run"
@@ -95,7 +95,7 @@ jobs:
           if has_script build; then $runner build; else echo "::notice::no build script"; fi
           if [ "${{ steps.detect.outputs.build_only }}" = "true" ]; then
             echo "::notice::build-only: deferring the JS test suite to the repo's own CI (install + build ran above)."
-          elif has_script test; then $runner test; else echo "::warning::no test script â€” the trust floor is build-only here"; fi
+          elif has_script test; then $runner test; else echo "::warning::no test script — the trust floor is build-only here"; fi
 
       # --- Python (uv) ---
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -107,7 +107,7 @@ jobs:
           set -e
           # --all-extras: install optional-dependency extras too. A repo's test
           # deps (pytest, pytest-asyncio, xdist) very commonly live in a `dev`/
-          # `test` EXTRA â€” which a plain `uv sync` does NOT install (it installs
+          # `test` EXTRA — which a plain `uv sync` does NOT install (it installs
           # default dependency-GROUPS, not extras). Without them an async suite
           # errors at fixture setup and this floor can never pass, making it noise
           # instead of a trust signal. Extras are no-ops where a repo has none.
@@ -116,13 +116,13 @@ jobs:
             # Build-only: deps RESOLVED above; now verify the source COMPILES.
             # compileall byte-compiles without importing or running app init, so
             # it needs none of the private submodules / secrets / fixtures the
-            # repo's own CI provisions â€” it just catches SyntaxErrors. The test
+            # repo's own CI provisions — it just catches SyntaxErrors. The test
             # RUN is deferred to that CI.
             uv run python -m compileall -q . -x '(/\.git/|/node_modules/|/\.venv/|/build/|/dist/)' \
               || { echo "::error::Python syntax errors found"; exit 1; }
             echo "::notice::build-only: deps resolved + source compiled; deferring the pytest suite to the repo's own CI."
           elif [ -d tests ] || [ -d test ]; then
-            # Prefer the project's own pytest (its plugins â€” asyncio etc. â€”
+            # Prefer the project's own pytest (its plugins — asyncio etc. —
             # matter); overlay one only when the project doesn't declare it.
             if uv run pytest --version >/dev/null 2>&1; then
               uv run pytest -q
@@ -130,7 +130,7 @@ jobs:
               uv run --with pytest pytest -q
             fi
           else
-            echo "::warning::no tests/ directory â€” the trust floor is dependency-resolution-only here"
+            echo "::warning::no tests/ directory — the trust floor is dependency-resolution-only here"
           fi
 
       # --- Loose Python scripts (no project file): syntax floor ---
@@ -139,7 +139,7 @@ jobs:
         shell: bash
         run: |
           python3 -m compileall -q . -x '(\.git|node_modules|\.venv)' || { echo "::error::Python syntax errors found"; exit 1; }
-          echo "::warning::script-only repo â€” the trust floor is syntax-only here (no tests)"
+          echo "::warning::script-only repo — the trust floor is syntax-only here (no tests)"
 
       # --- .NET (preinstalled on ubuntu runners; no extra action to pin) ---
       - name: Dotnet build + test
@@ -153,7 +153,7 @@ jobs:
           elif compgen -G "**/*Tests*.csproj" > /dev/null || compgen -G "**/*.Tests.csproj" > /dev/null; then
             dotnet test --nologo --no-build
           else
-            echo "::warning::no test projects â€” the trust floor is build-only here"
+            echo "::warning::no test projects — the trust floor is build-only here"
           fi
 
   standards-drift:

@@ -1,6 +1,6 @@
-﻿<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
+<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
 
-# AGENTS.md â€” EGI Agent Behavior Contract
+# AGENTS.md — EGI Agent Behavior Contract
 
 This file governs how all AI agents (Cline, Claude) operate in EGI repos.
 Read this before writing a single line of code. Follow it without exception.
@@ -12,14 +12,14 @@ Read this before writing a single line of code. Follow it without exception.
 1. **Read the operator profile.** `personal/operator-profile.md` (in this kit's gitignored `personal/` folder)
    tells you who you're working with, their communication preferences, what they want you
    to decide vs escalate, and their hard lines. Apply it. When it conflicts with a hard
-   rule here or in `coding-rules.md`, the rule wins â€” and you flag the conflict.
+   rule here or in `coding-rules.md`, the rule wins — and you flag the conflict.
 
 2. **Read the task brief.** Your task brief is the authoritative source of scope:
-   - `routing.tier` and `routing.approved` â€” if tier is `premium` and approved is `false`,
+   - `routing.tier` and `routing.approved` — if tier is `premium` and approved is `false`,
      write a plan only (see Plan-Only Mode below). Do not execute.
-   - `targetFiles` â€” your scope. Stay inside it.
-   - `definitionOfDone` â€” the exit condition. When this is met, you're done.
-   - `webhookUrl` â€” POST status updates here throughout the task.
+   - `targetFiles` — your scope. Stay inside it.
+   - `definitionOfDone` — the exit condition. When this is met, you're done.
+   - `webhookUrl` — POST status updates here throughout the task.
 
 3. **Read the codebase, not just this document.** Use `list_files` and `read_file` to
    understand what currently exists before writing anything. Check package versions,
@@ -36,14 +36,14 @@ Read this before writing a single line of code. Follow it without exception.
 Use chat for direct, time-sensitive questions where you need a response to unblock a specific
 step. Keep it one question, one specific ask.
 
-For things that need async tracking, approval workflow, or a record â€” POST to `/api/decisions`
+For things that need async tracking, approval workflow, or a record — POST to `/api/decisions`
 instead. Decisions are persistent, logged, and actionable from the panel. Chat is ephemeral.
 
 **Use judgment:**
-- Quick clarification to unblock work right now â†’ ask in chat
-- Approval needed before proceeding with a significant action â†’ POST to `/api/decisions`
-- Something is broken and you can't continue â†’ POST blocked status + ask in chat
-- Architectural direction or preference choice â†’ POST to `/api/decisions` (needs a record)
+- Quick clarification to unblock work right now → ask in chat
+- Approval needed before proceeding with a significant action → POST to `/api/decisions`
+- Something is broken and you can't continue → POST blocked status + ask in chat
+- Architectural direction or preference choice → POST to `/api/decisions` (needs a record)
 
 If you can make a reasonable assumption without asking, make it, document it in the task
 status update, and proceed. Do not ask permission to make sensible decisions.
@@ -71,7 +71,7 @@ If `webhookUrl` is not in your task brief, skip status posting and proceed.
 
 ## Commit Discipline
 
-- **One concern per commit.** Not "misc changes" â€” one change, one commit message that says what it does.
+- **One concern per commit.** Not "misc changes" — one change, one commit message that says what it does.
 - **Stay in your targetFiles.** Do not modify files outside your task's scope without explicit justification in your commit message.
 - **If you find a bug outside your scope:** document it in the task status, do not fix it. Scope creep breaks other agents.
 - **Commit messages:** imperative tense, specific. "Add JWT refresh rotation to auth service" not "fix auth".
@@ -93,8 +93,8 @@ Before editing any file, check if another agent is likely working in the same ar
 
 **The default is to ship, all the way to live.** Merged to main/master == prod
 == live; the merge to the main branch is the live event, not a push to a
-feature/dev branch. A directed or approved task runs end to end â€” branch, PR,
-merge to main, deploy, smoke check â€” without a further approval step. Feature
+feature/dev branch. A directed or approved task runs end to end — branch, PR,
+merge to main, deploy, smoke check — without a further approval step. Feature
 and dev branches are dev; work them freely. Reaching production by merging a
 directed task is the intended outcome, not a reason to stop.
 
@@ -105,8 +105,8 @@ directed task is the intended outcome, not a reason to stop.
 - No breaking changes detected
 - PR scope is atomic (single task, single concern)
 
-**Raise a dashboard Decision (POST `/api/decisions`) â€” review-and-accept, never
-a silent stop â€” only for the irreversible tier:**
+**Raise a dashboard Decision (POST `/api/decisions`) — review-and-accept, never
+a silent stop — only for the irreversible tier:**
 - Production data deletion or destructive migration
 - Secret/credential rotation or exposure
 - Payment or billing changes
@@ -122,7 +122,7 @@ accept or reject from the dashboard. Anything not in this tier ships.
 - Open clean, atomic PRs
 - Write clear PR descriptions: what changed, why, how to verify
 - Do not open a PR that you know will fail auto-merge unless the escalation is intentional
-- If your task had multiple concerns, open multiple PRs â€” one per atomic change
+- If your task had multiple concerns, open multiple PRs — one per atomic change
 
 ---
 
@@ -130,7 +130,7 @@ accept or reject from the dashboard. Anything not in this tier ships.
 
 When `routing.approved: false` in your task brief, credits were insufficient to run the
 required premium model at classification time. The system automatically switched you to
-plan mode. This is not a human decision â€” it is automatic resource management.
+plan mode. This is not a human decision — it is automatic resource management.
 
 1. **DO NOT execute.** Write a plan only.
 2. Your plan must include: every file to touch, every step in order, expected outputs,
@@ -144,7 +144,7 @@ When credits are replenished, the system will notify the operator with options:
 - Re-run classification and execute directly
 
 You will be re-queued with `routing.approved: true`. At that point, pick up from the plan
-you already wrote â€” do not re-plan, execute.
+you already wrote — do not re-plan, execute.
 
 ---
 
@@ -190,7 +190,7 @@ This project may use framework versions newer than your training data.
 
 - Check `package.json`, `pyproject.toml`, or `go.mod` for actual versions before assuming APIs.
 - Read local docs in the repo before using any framework-specific pattern.
-- If you see a deprecation warning, fix it â€” don't suppress it.
+- If you see a deprecation warning, fix it — don't suppress it.
 - Do not add dependencies without explicit justification.
 
 ---
@@ -206,4 +206,20 @@ A task is done when:
 
 Do not mark done if tests are failing. Do not mark done if you skipped lint. Do not mark done
 if you haven't verified the changes work as described.
+
+**Reachability is part of done.** A feature only an agent can invoke is stranded, not
+shipped. Before claiming completion, ask both — every time, without being prompted:
+
+1. **Can the operator reach it from the surface they actually use?** Wire it there, or state
+   plainly why it cannot be (some things genuinely can't) — and say so *in that surface*,
+   where the control would have gone, not only in a commit message. If the surface ships as a
+   built artifact, building is not shipping: publish it, or they run a stale binary that
+   looks current.
+2. **Do the other surfaces still tell the truth?** If a change makes a second UI, doc, or
+   entry point wrong, fix or remove it in the same task. A stale surface that contradicts
+   reality is worse than a missing one, because it looks authoritative. This does not mean
+   building UI nobody asked for — it means never leaving one that lies.
+
+Long-running work must narrate itself (what is running, how long, what happens next) and its
+view must refresh on its own. A frozen row is indistinguishable from a hang.
 
