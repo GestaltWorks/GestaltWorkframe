@@ -253,5 +253,30 @@ async def fetch_catalog(
             await http.aclose()
 
 
+def load_cached_catalog_sync(
+    *,
+    cache_path: Path | None = None,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    allow_stale: bool = True,
+) -> list[CatalogModel]:
+    """Catalog for a synchronous caller. Reads disk only, never the network.
+
+    Route ordering happens on the user turn and must not make an HTTP call:
+    a catalog refresh belongs to a background task (`fetch_catalog`), which
+    writes the cache this reads. Returns the pinned fallback when there is no
+    usable cache, so ordering always has something to work with.
+    """
+    path = cache_path or _cache_path()
+    fresh = _read_cache(path, ttl_seconds)
+    if fresh:
+        return fresh
+    if allow_stale:
+        stale = _read_cache(path, ttl_seconds=10 * 365 * 24 * 3600)
+        if stale:
+            logger.debug("using stale model catalog cache for synchronous read")
+            return stale
+    return list(PINNED_FALLBACK)
+
+
 def index_by_id(models: Iterable[CatalogModel]) -> dict[str, CatalogModel]:
     return {model.id: model for model in models}

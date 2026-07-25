@@ -1,0 +1,203 @@
+"""Capability ordering inside the router.
+
+The resolver decides which cloud model a turn should prefer; these tests pin
+how that decision reaches route selection, and — more importantly — that it
+cannot take the service down when it is wrong.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from gestaltworkframe.core.model_catalog import CatalogModel
+from gestaltworkframe.core.router import (
+    CAPABILITY_ROUTING_ENV,
+    DEFAULT_LANE,
+    TASK_LANES,
+    LLMRouter,
+    ProviderRoute,
+)
+
+
+def _route(name: str, model: str, *, is_cloud: bool = True, priority: int = 0) -> ProviderRoute:
+    # is_cloud is derived from cost_tier, not passed.
+    return ProviderRoute(
+        name=name,
+        provider=None,
+        provider_type="openai_compatible",
+        model=model,
+        role="secondary",
+        cost_tier="low_cost" if is_cloud else "local",
+        allowed_response_policies=["local_then_low_cost"],
+        routing_priority=priority,
+    )
+
+
+def _catalog_cache(tmp_path: Path, models: list[dict]) -> Path:
+    """Write a catalog cache the sync reader will accept as fresh."""
+    import time
+
+    path = tmp_path / "catalog.json"
+    path.write_text(
+        json.dumps({"fetched_at": time.time(), "catalog": {"data": models}}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _entry(model_id: str, *, prompt: float, completion: float, intelligence: float = 50.0) -> dict:
+    return {
+        "id": model_id,
+        "context_length": 1_000_000,
+        "pricing": {"prompt": str(prompt / 1_000_000), "completion": str(completion / 1_000_000)},
+        "supported_parameters": ["tools", "tool_choice", "structured_outputs", "reasoning"],
+        "benchmarks": {
+            "artificial_analysis": {
+                "intelligence_index": intelligence,
+                "coding_index": intelligence + 15,
+                "agentic_index": intelligence - 5,
+            }
+        },
+    }
+
+
+@pytest.fixture()
+def router() -> LLMRouter:
+    return LLMRouter(primary=None)
+
+
+def test_disabled_by_default_leaves_static_order_untouched(router, monkeypatch):
+    """A deployment opts in; it does not get reordered behind its back."""
+    monkeypatch.delenv(CAPABILITY_ROUTING_ENV, raising=False)
+    assert router._capability_routing_enabled() is False
+
+
+def test_gateway_prefix_is_stripped_to_reach_the_catalog_id(router, monkeypatch):
+    """Transport mapping is configuration, not judgement."""
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+    assert router._catalog_id("openrouter/anthropic/claude-haiku-4.5") == "anthropic/claude-haiku-4.5"
+    assert router._catalog_id("anthropic/claude-haiku-4.5") == "anthropic/claude-haiku-4.5"
+
+
+def test_cloud_routes_are_ordered_by_the_lane_not_by_priority(router, monkeypatch, tmp_path):
+    """The whole point: a hand-typed priority integer stops deciding."""
+    cache = _catalog_cache(
+        tmp_path,
+        [
+            _entry("vendor/cheap", prompt=0.1, completion=0.4, intelligence=45),
+            _entry("vendor/pricey", prompt=0.9, completion=40.0, intelligence=46),
+        ],
+    )
+    monkeypatch.setenv("MODEL_CATALOG_CACHE_PATH", str(cache))
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+
+    # Both clear the lane's $1/M prompt ceiling, so ranking decides: the
+    # "pricey" one is cheap to prompt and expensive to answer, which is exactly
+    # the trap that ranking on the sticker input price falls into.
+    routes = [
+        _route("pricey", "openrouter/vendor/pricey", priority=99),
+        _route("cheap", "openrouter/vendor/cheap", priority=1),
+    ]
+    diagnostics: dict = {}
+
+    ordered = router._capability_order(routes, "classification", diagnostics)
+
+    assert [r.name for r in ordered] == ["cheap", "pricey"]
+    assert diagnostics["capability_lane"] == "lookup"
+    assert "vendor/cheap" in diagnostics["capability_choice"]
+
+
+def test_a_model_that_fails_the_lane_is_dropped(router, monkeypatch, tmp_path):
+    cache = _catalog_cache(
+        tmp_path,
+        [
+            _entry("vendor/good", prompt=0.1, completion=0.4, intelligence=55),
+            {  # no tool support: broken for an agentic turn, however cheap
+                "id": "vendor/no-tools",
+                "context_length": 1_000_000,
+                "pricing": {"prompt": "0.0000001", "completion": "0.0000002"},
+                "supported_parameters": ["temperature"],
+                "benchmarks": {"artificial_analysis": {"intelligence_index": 55}},
+            },
+        ],
+    )
+    monkeypatch.setenv("MODEL_CATALOG_CACHE_PATH", str(cache))
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+
+    routes = [_route("nt", "openrouter/vendor/no-tools"), _route("good", "openrouter/vendor/good")]
+    diagnostics: dict = {}
+
+    ordered = router._capability_order(routes, "classification", diagnostics)
+
+    assert [r.name for r in ordered] == ["good"]
+    assert any("missing required parameter" in line for line in diagnostics["capability_rejected"])
+
+
+def test_routes_the_catalog_does_not_list_are_kept_last_not_dropped(router, monkeypatch, tmp_path):
+    """An unlisted model is unranked, not disqualified.
+
+    Self-hosted and private routes never appear in a public catalog; dropping
+    them would take a working route offline the first time it is enabled.
+    """
+    cache = _catalog_cache(tmp_path, [_entry("vendor/known", prompt=1.0, completion=4.0, intelligence=50)])
+    monkeypatch.setenv("MODEL_CATALOG_CACHE_PATH", str(cache))
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+
+    routes = [_route("private", "internal/private-model"), _route("known", "openrouter/vendor/known")]
+    ordered = router._capability_order(routes, "classification", {})
+
+    assert [r.name for r in ordered] == ["known", "private"]
+
+
+def test_benched_routes_are_excluded_using_the_routers_own_breaker(router, monkeypatch, tmp_path):
+    """Availability is observed. Reuse the breaker, do not invent a second signal."""
+    cache = _catalog_cache(
+        tmp_path,
+        [
+            _entry("vendor/flaky", prompt=0.1, completion=0.2, intelligence=50),
+            _entry("vendor/steady", prompt=0.9, completion=3.0, intelligence=50),
+        ],
+    )
+    monkeypatch.setenv("MODEL_CATALOG_CACHE_PATH", str(cache))
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+
+    flaky = _route("flaky", "openrouter/vendor/flaky")
+    steady = _route("steady", "openrouter/vendor/steady")
+    router._route_breaker_open.add(router._route_key(flaky))
+
+    ordered = router._capability_order([flaky, steady], "classification", {})
+
+    assert [r.name for r in ordered] == ["steady"]
+
+
+def test_a_lane_that_clears_nothing_falls_back_to_the_given_order(router, monkeypatch, tmp_path):
+    """A mis-tuned floor must degrade ordering, never the service.
+
+    This is the failure mode that shipped once already: a floor above the
+    index ceiling matched nothing at all.
+    """
+    cache = _catalog_cache(tmp_path, [_entry("vendor/ordinary", prompt=1.0, completion=4.0, intelligence=5)])
+    monkeypatch.setenv("MODEL_CATALOG_CACHE_PATH", str(cache))
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+
+    routes = [_route("a", "openrouter/vendor/ordinary"), _route("b", "openrouter/vendor/ordinary")]
+    diagnostics: dict = {}
+
+    ordered = router._capability_order(routes, "code_review", diagnostics)
+
+    assert ordered == routes, "every route must survive a lane that clears nothing"
+    assert "keeping static order" in diagnostics["capability_choice"]
+
+
+def test_empty_cloud_list_is_returned_untouched(router):
+    assert router._capability_order([], "classification", {}) == []
+
+
+def test_task_lane_mapping_covers_the_expensive_tasks():
+    """Review-grade work must not silently ride the cheap lane."""
+    for task in ("code_review", "critical_code_review", "security_review"):
+        assert TASK_LANES[task] == "review"
+    assert TASK_LANES.get("unmapped-task", DEFAULT_LANE) == "guide"

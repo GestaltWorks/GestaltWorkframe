@@ -82,6 +82,62 @@ context/output limits, and evidence links there.
   `deployments/<id>/brand.yaml` and `identity.yaml`. The framework ships no
   brand of its own.
 
+## Capability-based model selection
+
+`llm/profiles.json` is a static table: hardcoded model ids, hand-assigned
+`routing_priority` integers, and hardcoded prices. Every one of those goes
+stale, and the failure is silent — in the EGI deployment the table pointed at
+ids the gateway did not serve, so an entire provider's routes were down for
+days behind a healthy-looking sibling route.
+
+`docs/standards/model-routing-policy.md` requires declaring what a turn needs
+and resolving the model at runtime. Three modules implement that:
+
+- `core/model_catalog.py` — OpenRouter's public `GET /api/v1/models`, cached on
+  disk for 24h, with a pinned fallback. `fetch_catalog()` is async and belongs
+  to a refresh task; `load_cached_catalog_sync()` is what route selection uses,
+  and it never touches the network on a user turn.
+- `core/model_lanes.py` — a lane is a policy record: required
+  `supported_parameters`, context and price ceilings, quality floors, the
+  expected turn shape, and a cost-or-quality preference. Lanes never name a
+  model. A deployment overrides them in `deployments/<id>/lanes.yaml`.
+- `core/model_resolver.py` — filter → floor → rank → shortlist, returning the
+  ordered candidates and the reason every other model lost.
+
+### Turning it on
+
+Off by default. Set `ENABLE_CAPABILITY_ROUTING=true` once a deployment's lanes
+are tuned. When enabled, the *order of cloud routes* comes from resolving the
+turn's lane instead of from `routing_priority`; provider construction, health
+checks, spend gates, and concurrency are untouched.
+
+`MODEL_GATEWAY_PREFIX` (default `openrouter/`) maps a gateway alias to the
+catalog id. Transport mapping is configuration; a table asserting which model
+is *best* is not.
+
+### Safety properties
+
+These are the reasons it can be enabled on a live deployment:
+
+- A lane that clears nothing keeps the caller's existing order, so a mis-tuned
+  floor degrades ordering rather than the service. That is not hypothetical:
+  a review floor of 70 intelligence was unreachable against a published index
+  that tops out near 60, and matched nothing at all.
+- Routes the catalog does not list are kept, ordered last. An unlisted model is
+  unranked, not disqualified; self-hosted and private routes never appear in a
+  public catalog.
+- Benched routes are excluded using the router's existing breaker rather than a
+  second, separate failure signal.
+- The lane, the winning model, and the rejection reasons are published into
+  route diagnostics, because automatic selection without a visible decision is
+  unauditable.
+
+### Floors are reviewed, not guessed
+
+Floors are calibrated against the published index distribution and carry the
+numbers in a comment. Review them when a lane's output quality drifts, when
+spend moves materially, or quarterly.
+
 ## Knowledge library policy
 - The KB layer should expose the deployment's corpus through multiple
   products: grounded chat retrieval, browsable/searchable library pages,
