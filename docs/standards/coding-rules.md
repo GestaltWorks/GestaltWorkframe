@@ -163,6 +163,9 @@ Verified in this session, not inferred.
 - Broadening a try/except to make an error message disappear.
 - Creating `thing_v2` and leaving `thing` wired in.
 - Deleting a config key that "seemed unused" without a reference search.
+- Correcting a value in one surface (an i18n key, a constant, a config
+  default) while a hardcoded duplicate of that value still shows the old
+  value in another surface. The blast-radius search would have found both.
 
 New variants of this move appear constantly. The rule covers the move,
 not the list.

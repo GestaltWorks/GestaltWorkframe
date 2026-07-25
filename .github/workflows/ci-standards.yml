@@ -1,0 +1,186 @@
+# AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1.
+
+# The kit's vendored CI floor (SPEC 2.6 + 3.2): every managed repo gets a
+# build-test job that actually exercises the code (auto-detected stack) and a
+# standards-drift job that fails CI when vendored standards diverge from the
+# kit. Secret scanning is Bootstrap-Repo's separate workflow; not duplicated here.
+#
+# Auto-merge (SPEC 2.1) trusts THIS check: a repo qualifies for the switch only
+# after this workflow has demonstrably failed on a real break.
+#
+# Third-party actions are SHA-pinned (supply-chain rule). Tag comments are for
+# humans; the SHA is what runs.
+
+name: ci-standards
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # One detection pass drives every conditional step below. A repo with no
+      # recognizable stack passes with a notice (docs/config repos), but any
+      # detected stack MUST build and its tests MUST pass.
+      - name: Detect stack
+        id: detect
+        shell: bash
+        run: |
+          has_node=false; node_dir=.; pkg_mgr=npm
+          if [ -f package.json ]; then has_node=true; node_dir=.
+          elif [ -f web/package.json ]; then has_node=true; node_dir=web; fi
+          if [ "$has_node" = true ] && [ -f "$node_dir/pnpm-lock.yaml" ]; then pkg_mgr=pnpm; fi
+          has_py=false
+          if [ -f pyproject.toml ]; then has_py=true; fi
+          # Script repos: loose .py files with no project file still get a
+          # syntax floor (compileall) — a SyntaxError must fail CI.
+          has_loose_py=false
+          if [ "$has_py" = false ] && find . -name '*.py' -not -path './.git/*' -print -quit | grep -q .; then has_loose_py=true; fi
+          has_dotnet=false
+          if compgen -G "*.sln" > /dev/null || compgen -G "**/*.csproj" > /dev/null; then has_dotnet=true; fi
+          echo "has_node=$has_node"    >> "$GITHUB_OUTPUT"
+          echo "node_dir=$node_dir"    >> "$GITHUB_OUTPUT"
+          echo "pkg_mgr=$pkg_mgr"      >> "$GITHUB_OUTPUT"
+          echo "has_py=$has_py"        >> "$GITHUB_OUTPUT"
+          echo "has_loose_py=$has_loose_py" >> "$GITHUB_OUTPUT"
+          echo "has_dotnet=$has_dotnet" >> "$GITHUB_OUTPUT"
+          # Build-only opt-out: a repo whose OWN CI runs the test suite (e.g. it
+          # needs private submodules or secrets this generic floor can't
+          # provision, or its dedicated CI already tests more completely) drops a
+          # `.github/ci-floor-build-only` marker. The floor then verifies deps
+          # RESOLVE and code COMPILES (a real, cheap floor) and defers the test
+          # RUN to that repo's CI — instead of duplicating it or going
+          # permanently red on fixtures it can't provision.
+          build_only=false
+          if [ -f .github/ci-floor-build-only ]; then build_only=true; fi
+          echo "build_only=$build_only" >> "$GITHUB_OUTPUT"
+          if [ "$build_only" = true ]; then echo "::notice::ci-floor-build-only marker present — the repo's own CI runs the suite; the floor verifies build/resolution only."; fi
+          echo "detected: node=$has_node($node_dir,$pkg_mgr) python=$has_py loose_py=$has_loose_py dotnet=$has_dotnet build_only=$build_only"
+          if [ "$has_node" = false ] && [ "$has_py" = false ] && [ "$has_loose_py" = false ] && [ "$has_dotnet" = false ]; then
+            echo "::notice::No buildable stack detected (node/python/dotnet); build-test passes vacuously."
+          fi
+
+      # --- Node ---
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.detect.outputs.has_node == 'true'
+        with:
+          node-version: 22
+      - name: Node install + build + test
+        if: steps.detect.outputs.has_node == 'true'
+        shell: bash
+        working-directory: ${{ steps.detect.outputs.node_dir }}
+        run: |
+          set -e
+          if [ "${{ steps.detect.outputs.pkg_mgr }}" = "pnpm" ]; then
+            # Current pnpm 10 (matches how the repos are managed). Corepack's
+            # default (10.0.0) predates ignoredBuiltDependencies and errors on
+            # these repos' workspace files — never rely on it.
+            npm install -g pnpm@10
+            pnpm install --frozen-lockfile
+            runner="pnpm run"
+          else
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+            runner="npm run"
+          fi
+          has_script() { node -e "process.exit(((require('./package.json').scripts||{})['$1'])?0:1)"; }
+          if has_script build; then $runner build; else echo "::notice::no build script"; fi
+          if [ "${{ steps.detect.outputs.build_only }}" = "true" ]; then
+            echo "::notice::build-only: deferring the JS test suite to the repo's own CI (install + build ran above)."
+          elif has_script test; then $runner test; else echo "::warning::no test script — the trust floor is build-only here"; fi
+
+      # --- Python (uv) ---
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        if: steps.detect.outputs.has_py == 'true'
+      - name: Python sync + tests
+        if: steps.detect.outputs.has_py == 'true'
+        shell: bash
+        run: |
+          set -e
+          # --all-extras: install optional-dependency extras too. A repo's test
+          # deps (pytest, pytest-asyncio, xdist) very commonly live in a `dev`/
+          # `test` EXTRA — which a plain `uv sync` does NOT install (it installs
+          # default dependency-GROUPS, not extras). Without them an async suite
+          # errors at fixture setup and this floor can never pass, making it noise
+          # instead of a trust signal. Extras are no-ops where a repo has none.
+          if [ -f uv.lock ]; then uv sync --frozen --all-extras; else uv sync --all-extras; fi
+          if [ "${{ steps.detect.outputs.build_only }}" = "true" ]; then
+            # Build-only: deps RESOLVED above; now verify the source COMPILES.
+            # compileall byte-compiles without importing or running app init, so
+            # it needs none of the private submodules / secrets / fixtures the
+            # repo's own CI provisions — it just catches SyntaxErrors. The test
+            # RUN is deferred to that CI.
+            uv run python -m compileall -q . -x '(/\.git/|/node_modules/|/\.venv/|/build/|/dist/)' \
+              || { echo "::error::Python syntax errors found"; exit 1; }
+            echo "::notice::build-only: deps resolved + source compiled; deferring the pytest suite to the repo's own CI."
+          elif [ -d tests ] || [ -d test ]; then
+            # Prefer the project's own pytest (its plugins — asyncio etc. —
+            # matter); overlay one only when the project doesn't declare it.
+            if uv run pytest --version >/dev/null 2>&1; then
+              uv run pytest -q
+            else
+              uv run --with pytest pytest -q
+            fi
+          else
+            echo "::warning::no tests/ directory — the trust floor is dependency-resolution-only here"
+          fi
+
+      # --- Loose Python scripts (no project file): syntax floor ---
+      - name: Python syntax floor (compileall)
+        if: steps.detect.outputs.has_loose_py == 'true'
+        shell: bash
+        run: |
+          python3 -m compileall -q . -x '(\.git|node_modules|\.venv)' || { echo "::error::Python syntax errors found"; exit 1; }
+          echo "::warning::script-only repo — the trust floor is syntax-only here (no tests)"
+
+      # --- .NET (preinstalled on ubuntu runners; no extra action to pin) ---
+      - name: Dotnet build + test
+        if: steps.detect.outputs.has_dotnet == 'true'
+        shell: bash
+        run: |
+          set -e
+          dotnet build --nologo -clp:ErrorsOnly
+          if [ "${{ steps.detect.outputs.build_only }}" = "true" ]; then
+            echo "::notice::build-only: deferring dotnet test to the repo's own CI (build ran above)."
+          elif compgen -G "**/*Tests*.csproj" > /dev/null || compgen -G "**/*.Tests.csproj" > /dev/null; then
+            dotnet test --nologo --no-build
+          else
+            echo "::warning::no test projects — the trust floor is build-only here"
+          fi
+
+  standards-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KIT_TOKEN: ${{ secrets.KIT_READ_TOKEN }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Kit access?
+        id: kit
+        shell: bash
+        run: |
+          if [ -n "$KIT_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::KIT_READ_TOKEN secret not set; drift check skipped. Add a read-only token for GestaltWorks/llm-builder-kit to enable."
+          fi
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.kit.outputs.enabled == 'true'
+        with:
+          repository: GestaltWorks/llm-builder-kit
+          token: ${{ secrets.KIT_READ_TOKEN }}
+          path: .kit
+      - name: Vendored standards in sync with the kit
+        if: steps.kit.outputs.enabled == 'true'
+        shell: pwsh
+        run: ./.kit/sync-standards.ps1 -RepoPath . -Check
+
