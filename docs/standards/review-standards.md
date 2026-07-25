@@ -1,4 +1,4 @@
-<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
+﻿<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
 
 # Review Standards
 
@@ -64,7 +64,7 @@ billing changes, destructive or irreversible data operations (deletion,
 destructive migration), authorization/permission changes, force-push over
 shared history. This mirrors the merge policy in AGENTS.md and the dispatcher's
 escalation gate. A directed production deploy, a normal migration, or ordinary
-external-API work is not on this list — those ship. Reaching prod is the
+external-API work is not on this list â€” those ship. Reaching prod is the
 intended outcome, not an escalation.
 
 ## Verdict consumption

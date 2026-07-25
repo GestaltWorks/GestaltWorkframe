@@ -1,4 +1,4 @@
-<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
+﻿<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
 
 # Model Routing Policy
 
@@ -82,7 +82,7 @@ never a matter of taste.
 
   Both are estimates; declare them explicitly as tunable lane parameters rather
   than burying them in a comparison. Ranking on input price alone is the common
-  bug — it looks right and quietly picks the wrong model.
+  bug â€” it looks right and quietly picks the wrong model.
 - **Transport mapping is config, not judgment.** A table mapping a catalog slug
   to the gateway's alias (which name the broker routes direct vs. via the
   aggregator) is legitimate configuration. A table asserting which model is
@@ -90,7 +90,7 @@ never a matter of taste.
 - **Data handling is a hard filter, applied before price.** Exclude `:free`
   tiers: they are generally trained on submitted prompts, and a cost ranking
   will otherwise always select them, because zero is a degenerate optimum. A
-  route is only "cheap" if it is allowed to see the payload — apply the
+  route is only "cheap" if it is allowed to see the payload â€” apply the
   not-cloud-eligible check (see "Spend and control") as a filter on the
   candidate set, not as an afterthought. Exclude preview/experimental builds
   from anything user-facing; a live session must not break because a provider
@@ -98,7 +98,7 @@ never a matter of taste.
 - **Availability is the third axis, and it must be OBSERVED.** Price and quality
   are necessary and not sufficient: a model that benchmarks well and prices well
   is worthless while it is timing out or rate-limiting you. Do not trust a
-  provider's published uptime for this — that metric tracks whether the endpoint
+  provider's published uptime for this â€” that metric tracks whether the endpoint
   answers at all, not whether *your* requests succeed, so rate limits, 429s,
   context rejections, and tool-format quirks all still read as "up" (seen in
   practice: a model reported as failing showed `uptime_last_5m = 100`). Keep
@@ -107,7 +107,7 @@ never a matter of taste.
 - **Fail sideways, not upward.** When the chosen model errors, retry on the next
   candidate that already cleared the same lane floors before escalating to the
   premium fallback. A single pinned fallback turns a cheap provider's bad ten
-  minutes into a frontier-priced turn — the opposite of the intent.
+  minutes into a frontier-priced turn â€” the opposite of the intent.
 - **Never swap models mid-answer.** Retry only while nothing has been streamed
   to the user; splicing two models' prose into one reply is worse than a clean
   failure.
@@ -124,7 +124,7 @@ voice, holds a narrative register, or keeps a brand's cadence. For lanes judged
 on craft rather than correctness:
 
 - resolve to a **shortlist** that clears the objective floors, then order it by a
-  stored human preference — data (config), refreshable without a deploy, not a
+  stored human preference â€” data (config), refreshable without a deploy, not a
   constant in code;
 - keep a **manual override** so the operator can pin a model for one call;
 - distrust any design claiming to automate this lane. It is measuring the wrong
@@ -133,12 +133,12 @@ on craft rather than correctness:
 ### Review cadence
 
 Floors and preferences are reviewed when a lane's output quality drifts, when
-spend moves materially, or quarterly — whichever comes first. The catalog
+spend moves materially, or quarterly â€” whichever comes first. The catalog
 refreshes itself; the *standards* are a human decision and are versioned.
 
 ## Context compression (pre-call)
 
-Compress high-volume machine output — tool results, logs, RAG chunks, files —
+Compress high-volume machine output â€” tool results, logs, RAG chunks, files â€”
 before any metered or premium call. Human-authored context still follows the
 context-pack discipline; compression handles the bulk noise a human will not
 trim by hand.
@@ -165,7 +165,7 @@ Fallback if not used:
 ```
 
 If a local model fails twice in the same way, change the task decomposition or
-the model — do not keep retrying the same prompt.
+the model â€” do not keep retrying the same prompt.
 
 ## Spend and control
 

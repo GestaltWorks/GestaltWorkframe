@@ -1,4 +1,4 @@
-<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
+﻿<!-- AUTO-SYNCED from the LLM Builder Kit. Do not edit here; edit the kit source and re-run sync-standards.ps1. -->
 
 # Professional Coding Rules for a One-Person Software Shop
 
@@ -18,7 +18,7 @@ Build the smallest correct version that can be tested, maintained, secured, and 
 ## Engineering quality
 
 - Read the existing code before changing it.
-- Match the project’s language, patterns, package manager, formatting, and test style.
+- Match the projectâ€™s language, patterns, package manager, formatting, and test style.
 - Use types and schemas at boundaries: HTTP, database, queues, tools, files, model I/O, and third-party APIs.
 - Put business rules in named functions/modules, not scattered conditionals.
 - Avoid cleverness that makes debugging harder.
@@ -71,8 +71,8 @@ Build the smallest correct version that can be tested, maintained, secured, and 
 - Work on focused branches.
 - Commit only intentional source changes.
 - Do not include build output, dependency folders, secrets, local databases, or personal machine paths.
-- **Merged to main/master == prod == live.** The live event is the merge to the main branch, not a push to a feature/dev branch. Directed or approved work ships end to end: branch, PR, merge to main, deploy. Merging a directed task to main is the intended outcome, not an action to pause on. Feature and dev branches are dev — push them freely.
-- Stop only for the irreversible tier — production data deletion or destructive migration, secret rotation or exposure, payment/billing changes, force-push over shared history, mass external outreach. For those, raise a decision the operator reviews and accepts, rather than acting silently; keep working the rest of the task meanwhile.
+- **Merged to main/master == prod == live.** The live event is the merge to the main branch, not a push to a feature/dev branch. Directed or approved work ships end to end: branch, PR, merge to main, deploy. Merging a directed task to main is the intended outcome, not an action to pause on. Feature and dev branches are dev â€” push them freely.
+- Stop only for the irreversible tier â€” production data deletion or destructive migration, secret rotation or exposure, payment/billing changes, force-push over shared history, mass external outreach. For those, raise a decision the operator reviews and accepts, rather than acting silently; keep working the rest of the task meanwhile.
 - A deployment is complete only when the live service is updated and a smoke check passes.
 - Know the rollback path before risky releases.
 
