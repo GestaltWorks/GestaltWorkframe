@@ -207,3 +207,19 @@ A task is done when:
 Do not mark done if tests are failing. Do not mark done if you skipped lint. Do not mark done
 if you haven't verified the changes work as described.
 
+**Reachability is part of done.** A feature only an agent can invoke is stranded, not
+shipped. Before claiming completion, ask both — every time, without being prompted:
+
+1. **Can the operator reach it from the surface they actually use?** Wire it there, or state
+   plainly why it cannot be (some things genuinely can't) — and say so *in that surface*,
+   where the control would have gone, not only in a commit message. If the surface ships as a
+   built artifact, building is not shipping: publish it, or they run a stale binary that
+   looks current.
+2. **Do the other surfaces still tell the truth?** If a change makes a second UI, doc, or
+   entry point wrong, fix or remove it in the same task. A stale surface that contradicts
+   reality is worse than a missing one, because it looks authoritative. This does not mean
+   building UI nobody asked for — it means never leaving one that lies.
+
+Long-running work must narrate itself (what is running, how long, what happens next) and its
+view must refresh on its own. A frozen row is indistinguishable from a hang.
+
