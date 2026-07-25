@@ -311,6 +311,20 @@ export class ChaosEngine {
     return true;
   }
 
+  /**
+   * Click handler entry: detonate the idling logo straight into the frame,
+   * skipping the fractal stage. Deployments that want the mark to explode
+   * into an attractor first call `burstToFractal()` instead.
+   */
+  burstToFrame(): boolean {
+    if (this.phase !== "logo" || !this.getLogoRect) return false;
+    const box = this.canvasLocal(this.getLogoRect());
+    this.setFrameTargets();
+    this.heading = "frame";
+    this.beginBurst(box.x + box.w / 2, box.y + box.h / 2);
+    return true;
+  }
+
   /** Recompute canvas size and current targets (e.g. after window resize). */
   refit(): void {
     this.resizeCanvas();
