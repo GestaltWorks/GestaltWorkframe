@@ -8,7 +8,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
+import os
+from pathlib import Path
+
 from gestaltworkframe.core.cloud_budget import CloudBudgetGate, MultiProviderBudgetGate
+from gestaltworkframe.core.model_catalog import load_cached_catalog_sync
+from gestaltworkframe.core.model_lanes import Lane, load_lanes
+from gestaltworkframe.core.model_resolver import resolve_lane
 from gestaltworkframe.core.providers import LLMProvider
 from gestaltworkframe.core.runtime import GenerationConcurrencyPolicy, RuntimeManager
 
@@ -30,6 +36,39 @@ ROUTING_STRATEGIES = {"best_value", "prefer_local", "prefer_cloud_quality", "loc
 # prefer_local and prefer_cloud_quality apply a stronger within-family lean for
 # operators who want an explicit tilt; local_only and cloud_only filter route
 # families entirely.
+# Capability-based routing (docs/standards/model-routing-policy.md).
+#
+# When enabled, the ORDER of cloud routes comes from resolving the turn's lane
+# against the live model catalog, instead of the hand-assigned routing_priority
+# integers in llm/profiles.json. Everything else about a route — provider
+# construction, health, spend gates, concurrency — is unchanged.
+#
+# Off by default: a deployment opts in once its lanes are tuned.
+CAPABILITY_ROUTING_ENV = "ENABLE_CAPABILITY_ROUTING"
+
+# Transport mapping is configuration, not judgement: the gateway prefixes its
+# aliases (`openrouter/anthropic/claude-haiku-4.5`) while the catalog keys the
+# same model as `anthropic/claude-haiku-4.5`.
+GATEWAY_PREFIX_ENV = "MODEL_GATEWAY_PREFIX"
+DEFAULT_GATEWAY_PREFIX = "openrouter/"
+
+# Which lane a task belongs to. Unmapped tasks use the guide lane, the default
+# conversational turn.
+TASK_LANES = {
+    "code_review": "review",
+    "critical_code_review": "review",
+    "deep_code_review": "review",
+    "security_review": "review",
+    "coding": "build",
+    "implementation_help": "build",
+    "large_refactor": "build",
+    "classification": "lookup",
+    "routine_chat": "lookup",
+    "basic_rewst_help": "lookup",
+}
+DEFAULT_LANE = "guide"
+
+
 ROUTE_COST_ADJUSTMENTS = {
     "best_value": {"local": 120, "low_cost": 40, "premium": 0},
     "prefer_local": {"local": 300, "low_cost": 75, "premium": 0},
@@ -416,6 +455,89 @@ class LLMRouter:
             raise ValueError(f"Unknown routing_strategy: {strategy}")
         self.routing_strategy = value
 
+    # ------------------------------------------------------------------
+    # Capability-based ordering
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _capability_routing_enabled() -> bool:
+        return os.getenv(CAPABILITY_ROUTING_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _catalog_id(model: str) -> str:
+        """Strip the gateway prefix to get the id the catalog keys on."""
+        prefix = os.getenv(GATEWAY_PREFIX_ENV, DEFAULT_GATEWAY_PREFIX)
+        return model[len(prefix):] if prefix and model.startswith(prefix) else model
+
+    @staticmethod
+    def _deployment_bundle_dir() -> Path | None:
+        """Where this deployment's lanes.yaml lives, if the bundle resolves."""
+        try:
+            from gestaltworkframe.core.deployment_config import _deployment_id, _deployment_root
+
+            return _deployment_root(_deployment_id())
+        except Exception:  # bad DEPLOYMENT_ID or missing bundle: defaults stand
+            return None
+
+    def _lane_for(self, task: str | None) -> Lane:
+        lanes = load_lanes(self._deployment_bundle_dir())
+        name = TASK_LANES.get((task or "").strip(), DEFAULT_LANE)
+        return lanes.get(name) or lanes[DEFAULT_LANE]
+
+    def _capability_order(
+        self,
+        cloud_routes: list[ProviderRoute],
+        task: str | None,
+        diagnostics: dict[str, Any],
+    ) -> list[ProviderRoute]:
+        """Order cloud routes by resolving the turn's lane against the catalog.
+
+        Returns the routes whose model cleared the lane, ranked by the lane's
+        preference. Routes the catalog does not know about are kept, ordered
+        last: an unlisted model is unranked, not disqualified, and dropping it
+        would take a working self-hosted or private route offline.
+
+        Falls back to the caller's existing order if nothing clears the lane,
+        so a mis-tuned floor degrades the ordering rather than the service.
+        """
+        if not cloud_routes:
+            return cloud_routes
+
+        lane = self._lane_for(task)
+        catalog = load_cached_catalog_sync()
+        # Availability is observed, not published. Reuse the breaker the router
+        # already maintains rather than inventing a second failure signal.
+        benched = {
+            self._catalog_id(route.model)
+            for route in cloud_routes
+            if self._route_key(route) in self._route_breaker_open
+            or self._route_error_count.get(self._route_key(route), 0) >= self.error_threshold
+        }
+        resolution = resolve_lane(lane, catalog, benched=benched)
+
+        rank = {candidate.id: position for position, candidate in enumerate(resolution.candidates)}
+        known = {model.id for model in catalog}
+
+        cleared = [r for r in cloud_routes if self._catalog_id(r.model) in rank]
+        unlisted = [r for r in cloud_routes if self._catalog_id(r.model) not in known]
+        cleared.sort(key=lambda r: rank[self._catalog_id(r.model)])
+
+        diagnostics["capability_lane"] = lane.name
+        diagnostics["capability_choice"] = resolution.explain()
+        diagnostics["capability_rejected"] = [
+            f"{rejection.model_id}: {rejection.reason}"
+            for rejection in resolution.rejections
+            if rejection.model_id in {self._catalog_id(r.model) for r in cloud_routes}
+        ]
+
+        ordered = cleared + unlisted
+        if not ordered:
+            diagnostics["capability_choice"] = (
+                f"lane {lane.name}: no configured cloud route cleared it; keeping static order"
+            )
+            return cloud_routes
+        return ordered
+
     def _ordered_routes(
         self,
         force_secondary: bool,
@@ -474,14 +596,26 @@ class LLMRouter:
                 routes.append(route)
         local = [route for route in routes if not route.is_cloud]
         cloud = [route for route in routes if route.is_cloud]
+        capability_ordered = False
+        if self._capability_routing_enabled():
+            reordered = self._capability_order(cloud, task, diagnostics)
+            capability_ordered = reordered is not cloud
+            cloud = reordered
+        def _rank_cloud(candidates: list[ProviderRoute]) -> list[ProviderRoute]:
+            # Capability ordering already ranked these against the lane; a
+            # re-sort on routing_priority would throw that away.
+            if capability_ordered:
+                return candidates
+            return sorted(candidates, key=lambda route: self._route_score(route, task, strategy), reverse=True)
+
         if strategy == "prefer_local":
-            ordered = sorted(local, key=lambda route: self._route_score(route, task, strategy), reverse=True) + sorted(
-                cloud, key=lambda route: self._route_score(route, task, strategy), reverse=True
-            )
+            ordered = sorted(local, key=lambda route: self._route_score(route, task, strategy), reverse=True) + _rank_cloud(cloud)
         elif strategy == "prefer_cloud_quality":
-            ordered = sorted(cloud, key=lambda route: self._route_score(route, task, strategy), reverse=True) + sorted(
-                local, key=lambda route: self._route_score(route, task, strategy), reverse=True
-            )
+            ordered = _rank_cloud(cloud) + sorted(local, key=lambda route: self._route_score(route, task, strategy), reverse=True)
+        elif capability_ordered:
+            # Mixed ordering keeps local ahead of cloud on score, but cloud
+            # internally stays in lane order.
+            ordered = sorted(local, key=lambda route: self._route_score(route, task, strategy), reverse=True) + cloud
         else:
             ordered = sorted(routes, key=lambda route: self._route_score(route, task, strategy), reverse=True)
         diagnostics["ordered_routes"] = [route.name for route in ordered]
