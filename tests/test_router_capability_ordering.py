@@ -201,3 +201,43 @@ def test_task_lane_mapping_covers_the_expensive_tasks():
     for task in ("code_review", "critical_code_review", "security_review"):
         assert TASK_LANES[task] == "review"
     assert TASK_LANES.get("unmapped-task", DEFAULT_LANE) == "guide"
+
+
+def test_both_transports_of_one_model_resolve_to_the_same_catalog_entry(router, monkeypatch, tmp_path):
+    """OpenRouter primary, Anthropic backup: two routes, one model.
+
+    If the direct alias did not resolve to the same catalog id it would never
+    inherit the lane ranking, so the backup could never be chosen and the
+    aggregator would be a single point of failure.
+    """
+    bundle = tmp_path / "brand"
+    bundle.mkdir()
+    (bundle / "transports.yaml").write_text(
+        "direct:\n  anthropic/claude-haiku-4.5: claude-haiku-4-5\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+    monkeypatch.setattr(type(router), "_deployment_bundle_dir", staticmethod(lambda: bundle))
+
+    assert router._catalog_id("openrouter/anthropic/claude-haiku-4.5") == "anthropic/claude-haiku-4.5"
+    assert router._catalog_id("claude-haiku-4-5") == "anthropic/claude-haiku-4.5"
+
+
+def test_aggregator_is_tried_before_the_direct_backup(router, monkeypatch, tmp_path):
+    """Doctrine order: OpenRouter first, direct provider as failover."""
+    bundle = tmp_path / "brand"
+    bundle.mkdir()
+    (bundle / "transports.yaml").write_text(
+        "direct:\n  vendor/model: vendor-direct\n", encoding="utf-8"
+    )
+    cache = _catalog_cache(tmp_path, [_entry("vendor/model", prompt=0.5, completion=2.0, intelligence=50)])
+    monkeypatch.setenv("MODEL_CATALOG_CACHE_PATH", str(cache))
+    monkeypatch.setenv("MODEL_GATEWAY_PREFIX", "openrouter/")
+    monkeypatch.setattr(type(router), "_deployment_bundle_dir", staticmethod(lambda: bundle))
+
+    # Deliberately listed backup-first to prove the order comes from the
+    # transport map and not from however the routes happen to be configured.
+    routes = [_route("direct", "vendor-direct"), _route("via-or", "openrouter/vendor/model")]
+
+    ordered = router._capability_order(routes, "classification", {})
+
+    assert [r.name for r in ordered] == ["via-or", "direct"]
