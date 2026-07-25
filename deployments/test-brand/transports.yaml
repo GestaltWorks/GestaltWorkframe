@@ -1,0 +1,11 @@
+# OpenRouter primary, direct provider backup.
+#
+# The aggregator alias is derived (MODEL_GATEWAY_PREFIX + catalog id). Direct
+# aliases are named by the gateway itself, so they are listed here. Both are
+# routes to the SAME model: the resolver ranks the model once and the router
+# tries the aggregator first, then the direct path, before moving on.
+direct:
+  anthropic/claude-haiku-4.5: claude-haiku-4-5
+  anthropic/claude-opus-5: claude-opus-5
+  anthropic/claude-sonnet-5: claude-sonnet-5
+  anthropic/claude-opus-4.8: claude-opus-4-8

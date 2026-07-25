@@ -15,6 +15,7 @@ from gestaltworkframe.core.cloud_budget import CloudBudgetGate, MultiProviderBud
 from gestaltworkframe.core.model_catalog import load_cached_catalog_sync
 from gestaltworkframe.core.model_lanes import Lane, load_lanes
 from gestaltworkframe.core.model_resolver import resolve_lane
+from gestaltworkframe.core.model_transport import load_transport_map
 from gestaltworkframe.core.providers import LLMProvider
 from gestaltworkframe.core.runtime import GenerationConcurrencyPolicy, RuntimeManager
 
@@ -463,11 +464,18 @@ class LLMRouter:
     def _capability_routing_enabled() -> bool:
         return os.getenv(CAPABILITY_ROUTING_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
-    @staticmethod
-    def _catalog_id(model: str) -> str:
-        """Strip the gateway prefix to get the id the catalog keys on."""
-        prefix = os.getenv(GATEWAY_PREFIX_ENV, DEFAULT_GATEWAY_PREFIX)
-        return model[len(prefix):] if prefix and model.startswith(prefix) else model
+    def _transports(self):
+        return load_transport_map(self._deployment_bundle_dir())
+
+    def _catalog_id(self, model: str) -> str:
+        """The catalog id an alias refers to, via either transport.
+
+        House doctrine is OpenRouter primary with Anthropic backup, so the
+        aggregator alias and the direct alias are two routes to one model and
+        must resolve to the same catalog entry — otherwise the backup never
+        inherits the lane ranking and can never be chosen.
+        """
+        return self._transports().catalog_id(model)
 
     @staticmethod
     def _deployment_bundle_dir() -> Path | None:
@@ -517,10 +525,14 @@ class LLMRouter:
 
         rank = {candidate.id: position for position, candidate in enumerate(resolution.candidates)}
         known = {model.id for model in catalog}
+        transports = self._transports()
 
         cleared = [r for r in cloud_routes if self._catalog_id(r.model) in rank]
         unlisted = [r for r in cloud_routes if self._catalog_id(r.model) not in known]
-        cleared.sort(key=lambda r: rank[self._catalog_id(r.model)])
+        # Model rank first, then transport: the aggregator is primary and the
+        # direct provider is the backup for the SAME model, so a failure of the
+        # aggregator retries that model directly before moving to another one.
+        cleared.sort(key=lambda r: (rank[self._catalog_id(r.model)], transports.transport_kind(r.model)))
 
         diagnostics["capability_lane"] = lane.name
         diagnostics["capability_choice"] = resolution.explain()
