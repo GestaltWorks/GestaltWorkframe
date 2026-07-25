@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import os
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from gestaltworkframe.api.chat import (
     chat_body_size_limit,
@@ -66,6 +66,7 @@ from gestaltworkframe.api.services import (  # noqa: F401
     get_app_services,
     require_admin_token,
 )
+from gestaltworkframe.core.model_catalog import refresh_catalog_forever
 from gestaltworkframe.core.db import get_session  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,16 @@ async def lifespan(app: FastAPI):
         # Startup: check initial provider health
         local_healthy = await services.local_provider.is_healthy()
         logger.info("Local LLM Provider healthy: %s", local_healthy)
-        yield
+        # Keep the model catalog warm. Route selection reads it synchronously
+        # and must never fetch on a user turn, so nothing else would populate
+        # it and capability routing would resolve against the pinned fallback.
+        catalog_task = asyncio.create_task(refresh_catalog_forever())
+        try:
+            yield
+        finally:
+            catalog_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await catalog_task
     finally:
         # `services` is guaranteed non-None here because build_app_services
         # raised above if it failed. The guard is paranoia for future refactors
