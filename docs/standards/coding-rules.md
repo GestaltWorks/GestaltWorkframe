@@ -8,6 +8,32 @@ These rules are intentionally short. They are for shipping real products under a
 
 Build the smallest correct version that can be tested, maintained, secured, and explained. Optimize for trust, clarity, reversibility, and repeatable delivery.
 
+## Where innovation goes
+
+Only real innovation is worth building. Not last year's playbook, not brute force
+— a one-person shop loses both of those contests on arithmetic. But that budget is
+spent in one place. It is not spread evenly over everything.
+
+- **Boring substrate, innovative surface.** Proven data structures, proven
+  storage, proven protocols, proven formats. Nothing underneath the interesting
+  part should be something a reader has to learn first.
+- **Rigidity underneath is what buys fluidity on top.** The surface gets to be
+  ambitious — disruptive, fluid, beautiful — precisely because nothing it stands
+  on is in question.
+- **Boring substrate is also what makes the innovation defensible.** A novel idea
+  on novel foundations cannot be verified, so it cannot be trusted, so it is not
+  defensible. It is merely unusual.
+- **Innovation is architectural, not lexical.** A different arrangement, a
+  different policy, a different contract between parts. A clever line of code is
+  not innovation; it is the cleverness the Engineering quality section forbids.
+- Novelty in the substrate is a tax paid forever, by every later reader, every
+  debugging session, every migration. Spend it only where it buys leverage.
+- Ask of every piece: **is this the leverage, or the substrate?** Substrate takes
+  the most proven option available. Leverage asks what a bigger team would not or
+  could not do.
+- Say which one a change is. Commodity work is necessary and fine; presenting it
+  as a breakthrough is not.
+
 ## Scope control
 
 - Do the requested job. Do not bundle unrelated refactors, docs, dependency upgrades, or feature ideas.
