@@ -14,6 +14,28 @@ Build the smallest correct version that can be tested, maintained, secured, and 
 - If the adjacent issue matters, record it as follow-up instead of silently expanding the change.
 - Prefer small PRs with one reason to exist.
 - Preserve public contracts unless the task explicitly changes them.
+- Fixing the same defect everywhere it lives is part of the requested job, not the
+  bundling this section forbids. Bundling is an unrelated change riding along.
+
+### Fix the class, not the instance
+
+The bug you were shown is one instance of a class. Fix it in one place and leave it
+in three others and it comes back as a new bug report. Before calling a fix done:
+
+1. Name the root cause as a pattern, not the symptom. Not "the emailed link was
+   wrong" but "a user-facing URL built from a global base instead of the request's
+   host."
+2. Grep for that pattern: the shared helper's other callers, the sibling field, the
+   other endpoint writing the same table, the other UI surface showing the same data.
+3. Act on every hit — **broken** → fix it here; **correct** → leave it; **correct
+   but looks broken** → comment why, or the next sweep "fixes" it and breaks it.
+4. Leave a guard that fails if the class returns. A test that enumerates the call
+   sites itself and fails on an unlisted one beats a test pinned to the one site you
+   just fixed.
+5. Re-check what you already fixed in that area. A partial fix comes back under a
+   new shape; the guard from step 4 is what catches it.
+6. Say what you swept, including a clean result: "swept 6 sites, 1 broken, 2
+   correct-by-design." Silence reads as not having looked.
 
 ## Engineering quality
 
