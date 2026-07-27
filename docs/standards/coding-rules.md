@@ -73,6 +73,31 @@ in three others and it comes back as a new bug report. Before calling a fix done
 - Comments explain non-obvious intent, constraints, or tradeoffs. They do not narrate obvious code.
 - Delete dead code when the deletion is in scope and verified.
 
+## Documentation
+
+Docs do not rot because nobody knows they should be updated. They rot because
+nothing asks at the moment of shipping, and because nothing ever tells a finished
+plan to leave. Full doctrine and tooling: the **doc-discipline** skill.
+
+- **Update the doc in the same change** when the diff adds, renames or removes a
+  user-facing surface (route, tab, command, script, scheduled job), changes an API
+  contract, changes a default or config key, or removes a capability. Internal
+  refactors and test-only changes need nothing — documenting those is noise, and
+  noise is what hides the real entries.
+- **Every markdown declares its lifecycle in frontmatter.** `kind: durable` for
+  reference material that is maintained forever; `kind: ephemeral` for a plan,
+  handoff, review or migration note, which also needs a `done_when:` that can be
+  checked by looking rather than remembering.
+- **Retiring an ephemeral doc is a deliverable of the work, not cleanup for
+  later.** An executed plan left in the tree reads as pending work. Git keeps the
+  history; the tree keeps what is true now.
+- **A new markdown file needs a reason.** Default to a section in an existing
+  doc. Every extra file is one more thing a reader must triage before trusting
+  anything. "It got long" is not a reason; a different audience or a different
+  lifecycle is.
+- Say what you checked, including a clean result. "Docs look fine" is
+  indistinguishable from not having looked.
+
 ## Security baseline
 
 - Never hardcode secrets, tokens, private keys, cookies, credentials, or customer data.
