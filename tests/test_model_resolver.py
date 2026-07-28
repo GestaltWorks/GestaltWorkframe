@@ -338,3 +338,40 @@ def test_every_default_lane_is_satisfiable_by_the_pinned_fallback():
             f"lane {lane.name} cannot be satisfied even by the pinned fallback; "
             "its floors are above what any shipped model publishes"
         )
+
+
+# ---- vendor preference ---------------------------------------------------
+
+def test_vendor_preference_reorders_but_never_admits_an_ineligible_model():
+    """A brand commitment is a preference among the qualified, not a filter.
+
+    EGI sells Claude-based engineering, so its customer-facing lanes must lead
+    with Anthropic. That cannot become a back door: a preferred vendor that
+    fails a hard requirement is still rejected.
+    """
+    lane = Lane(name="t", must=["tools"], prefer="cost", prefer_vendors=["anthropic/"])
+    cheaper_other = _model("vendor/cheap", prompt=0.1, completion=0.2)
+    preferred = _model("anthropic/claude-x", prompt=3.0, completion=15.0)
+    preferred_but_broken = _model("anthropic/no-tools", prompt=0.01, completion=0.02, params=frozenset())
+
+    result = resolve_lane(lane, [cheaper_other, preferred, preferred_but_broken])
+
+    assert [c.id for c in result.candidates] == ["anthropic/claude-x", "vendor/cheap"]
+    assert any("missing required parameter" in r.reason for r in result.rejections)
+
+
+def test_lane_still_resolves_when_no_preferred_vendor_qualifies():
+    """The preference must not make a lane unroutable."""
+    lane = Lane(name="t", must=["tools"], prefer="cost", prefer_vendors=["anthropic/"])
+    result = resolve_lane(lane, [_model("vendor/only-option", prompt=1.0, completion=4.0)])
+    assert [c.id for c in result.candidates] == ["vendor/only-option"]
+
+
+def test_no_vendor_preference_leaves_ordering_purely_objective():
+    lane = Lane(name="t", must=["tools"], prefer="cost")
+    cheap = _model("vendor/cheap", prompt=0.1, completion=0.2)
+    pricey = _model("anthropic/claude-x", prompt=9.0, completion=40.0)
+
+    result = resolve_lane(lane, [pricey, cheap])
+
+    assert [c.id for c in result.candidates][0] == "vendor/cheap"

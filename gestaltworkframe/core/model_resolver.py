@@ -181,10 +181,20 @@ def resolve_lane(
             )
         )
 
+    def vendor_rank(candidate: Candidate) -> int:
+        """Position in the lane's vendor preference; unlisted vendors sort last."""
+        for position, vendor in enumerate(lane.prefer_vendors):
+            if candidate.id.startswith(vendor):
+                return position
+        return len(lane.prefer_vendors)
+
+    # Vendor preference is applied AFTER the objective filters and floors, so it
+    # can only reorder models that were already eligible. It never admits a
+    # model that failed a requirement.
     if lane.prefer == "cost":
-        candidates.sort(key=lambda c: (c.cost_per_turn_usd, -c.quality_score, c.id))
+        candidates.sort(key=lambda c: (vendor_rank(c), c.cost_per_turn_usd, -c.quality_score, c.id))
     else:
-        candidates.sort(key=lambda c: (-c.quality_score, c.cost_per_turn_usd, c.id))
+        candidates.sort(key=lambda c: (vendor_rank(c), -c.quality_score, c.cost_per_turn_usd, c.id))
 
     shortlist = tuple(candidates[: max(1, lane.shortlist_size)])
     resolution = Resolution(lane=lane.name, candidates=shortlist, rejections=tuple(rejections))
