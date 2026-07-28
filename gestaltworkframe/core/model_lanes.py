@@ -63,6 +63,17 @@ class Lane(BaseModel):
     """Declared turn shape. A lookup and a long-form build are not the same
     turn, and ranking both on one assumed shape picks the wrong model."""
 
+    prefer_vendors: list[str] = Field(default_factory=list)
+    """Ordered vendor prefixes preferred among models that already cleared the
+    floors. A preference, never a filter: capability and price still decide who
+    is eligible, and if no preferred vendor qualifies the lane still resolves.
+
+    This is the doctrine's escape hatch for lanes judged on more than
+    correctness — house standard, client commitment, a brand promise that the
+    product is built on a particular model family. It is data, refreshable
+    without a deploy, rather than a model id frozen in code.
+    """
+
     shortlist_size: int = 3
     """How many candidates to keep for fail-sideways retries before any
     escalation. A single pinned fallback turns a cheap provider's bad ten
