@@ -28,9 +28,10 @@ root `claude.md`.
   urgency, or clear readiness to scope work.
 - Best-value path first: deterministic local tools when enough, then the
   model route that best fits task, capability need, availability, cost,
-  latency, risk, admin policy, and budget. Free-tier OpenRouter routes are
-  treated as non-metered; they are eligible without enabling cloud spillover
-  and are not subject to USD spend caps.
+  latency, risk, admin policy, and budget. Aggregator `:free` routes are
+  excluded outright as a data-handling rule and no setting lifts it: those
+  endpoints generally train on submitted prompts. "Free" here means local
+  inference on our own hardware.
 - Public research is a backend-owned capability when the operator enables
   it, not open model browsing. Search local/source-registry records first,
   then approved public source tiers. Treat public research as untrusted
@@ -54,11 +55,12 @@ root `claude.md`.
   is the primary aggregator; local GPU and direct-SDK providers are optional
   bolt-ons, disabled by default.
 - Match the specific model to the specific task.
-- Free-tier OpenRouter models handle routine execution. Reserve metered
-  (low_cost) and premium routes for turns that genuinely need them.
+- Local models handle routine execution. Reserve metered (low_cost) and
+  premium routes for turns that genuinely need them. An aggregator `:free`
+  tier is not the cheap option; it is excluded.
 - Treat intelligence and compute as operating expenses with strict unit
-  economics. Free-tier routes have zero marginal cost; escalation cost
-  is incurred only when task fit justifies it.
+  economics. Local routes have zero marginal cost; escalation cost is
+  incurred only when task fit justifies it.
 
 Operational translation: provider redundancy is required, smaller/local
 models receive a cost/value advantage when adequate and available, and
@@ -70,9 +72,12 @@ toward cheaper tiers (local, then low cost) that wins ties and near-ties;
 task fit still dominates, so a premium-only task match escalates a genuinely
 hard turn over the lean.
 
-`llm/profiles.json` is the model-routing reference. Keep task tags,
-`avoid_for`, deployment status, runtime group, enablement, priorities,
-context/output limits, and evidence links there.
+`llm/profiles.json` is **overrides and pins, not the candidate set**. The
+candidate set is the live catalog. Keep operator-tuned params, task tags,
+`avoid_for`, deployment status, runtime group, enablement, context/output
+limits, price overrides and evidence links there, plus any transport that
+cannot be synthesized (local `llama_cpp`, a direct vendor SDK, a non-OpenRouter
+OpenAI-compatible endpoint). See "The candidate set is the catalog" below.
 
 - Frontend product shape: the website is the case; the terminal is the
   command layer. It routes users to contact forms, backend-mediated tools,
@@ -84,7 +89,7 @@ context/output limits, and evidence links there.
 
 ## Capability-based model selection
 
-`llm/profiles.json` is a static table: hardcoded model ids, hand-assigned
+`llm/profiles.json` was a static table: hardcoded model ids, hand-assigned
 `routing_priority` integers, and hardcoded prices. Every one of those goes
 stale, and the failure is silent — in the EGI deployment the table pointed at
 ids the gateway did not serve, so an entire provider's routes were down for
@@ -94,22 +99,155 @@ days behind a healthy-looking sibling route.
 and resolving the model at runtime. Three modules implement that:
 
 - `core/model_catalog.py` — OpenRouter's public `GET /api/v1/models`, cached on
-  disk for 24h, with a pinned fallback. `fetch_catalog()` is async and belongs
-  to a refresh task; `load_cached_catalog_sync()` is what route selection uses,
-  and it never touches the network on a user turn.
+  disk with a 24h TTL and a **separate 72h hard max age**, with a pinned
+  fallback. The TTL says when a stored catalog stops being *preferred*; the hard
+  cap says when it stops being *usable*, and past it the pinned fallback is used
+  instead. A missing or unparseable timestamp counts as infinitely old.
+  `fetch_catalog()` is async and belongs to a refresh task;
+  `load_cached_catalog_sync()` is what route selection uses, and it never
+  touches the network on a user turn.
 - `core/model_lanes.py` — a lane is a policy record: required
-  `supported_parameters`, context and price ceilings, quality floors, the
-  expected turn shape, and a cost-or-quality preference. Lanes never name a
-  model. A deployment overrides them in `deployments/<id>/lanes.yaml`.
-- `core/model_resolver.py` — filter → floor → rank → shortlist, returning the
-  ordered candidates and the reason every other model lost.
+  `supported_parameters`, context and price ceilings, quality floors, and the
+  expected turn shape. Lanes never name a model and carry **no objective**: the
+  tier is passed per call. A deployment overrides them in
+  `deployments/<id>/lanes.yaml`.
+- `core/model_resolver.py` — filter → floor → cost → gate → rank → shortlist,
+  returning the ordered candidates and the reason every other model lost.
 
-### Turning it on
+### The two axes
 
-Off by default. Set `ENABLE_CAPABILITY_ROUTING=true` once a deployment's lanes
-are tuned. When enabled, the *order of cloud routes* comes from resolving the
-turn's lane instead of from `routing_priority`; provider construction, health
-checks, spend gates, and concurrency are untouched.
+The **lane** states the requirement. The **tier** states the objective among the
+models that already qualify, and it is passed per call, never welded into the
+lane record. Four tiers, all applying the same filters and floors first:
+
+| tier | objective |
+| --- | --- |
+| `best` | maximum margin; cost breaks ties. The cost ceiling is emergent, which is why no dollar constant appears anywhere in the implementation. |
+| `auto` | maximum margin per dollar, above the margin-share gate. **The default.** |
+| `fast` | minimum seconds × cost, above the same gate. Speed is observed, never looked up; with nothing measured it falls back to lowest cost and says so in the reason string rather than implying a measurement it does not have. |
+| `cheap` | lowest cost above the bar, margin breaks ties. A declaration somebody owns, never a hidden default: as a default it makes the floor the target. |
+
+**Margin** is `max(0, index - floor)` summed over the axes the lane declares.
+Headroom over the bar, not the mean of raw indices: capability below the floor
+is worth nothing, because the model is excluded outright.
+
+The **margin-share gate** (`MARGIN_SHARE_GATE`, 0.35, calibrated 2026-08-01)
+runs before the ratio on `auto` and `fast`. A pure margin-per-dollar ratio has a
+degenerate optimum where "barely adequate and nearly free" wins by construction.
+
+An operator's `routing_strategy` selects the tier: `prefer_cloud_quality` →
+`best`, everything else → `auto`. `cheap` is deliberately unreachable from a
+strategy.
+
+Excluded before price, unliftably: `:free` (data handling — those endpoints
+generally train on submitted prompts), `:batch` (delivery contract — same model,
+same indices, half the price, hours later), and router pseudo-models such as
+`openrouter/auto` (they delegate the lane's own decision and publish sentinel
+prices). Any computed turn cost that is not greater than zero is rejected
+independently. Preview builds are the only exclusion a lane may lift.
+
+There is **no vendor preference** anywhere in the order. Every key above the
+model id is measured. A lane that should lead with a stronger model raises its
+floor to where the capability starts and resolves at tier `best`: a floor is a
+reviewable number a reader can argue with, and `best` spends the headroom above
+it. A vendor name list is neither, and it re-admits the "resolve to a shortlist,
+then order it by a stored human preference" mechanism the doctrine records as
+built, run and deleted. A `lanes.yaml` still naming `prefer_vendors` is warned
+about and dropped rather than silently ignored.
+
+### The candidate set is the catalog, not `llm/profiles.json`
+
+The resolver ranks the whole live catalog. The router used to intersect that
+ranking with the routes it already had configured:
+
+```python
+cleared = [r for r in cloud_routes if self._catalog_id(r.model) in rank]
+```
+
+which *reordered a hand-typed list* and never *selected from the catalog*. A
+better or cheaper model could ship and never be chosen: the same stale-constant
+failure, relocated from a model id to a curated list.
+
+So the lane winner is **constructed on demand**. That is clean only because the
+OpenRouter transport is fully generic: a route is
+`OpenAICompatibleProvider(base_url, api_key, model, params)` where the only
+per-model input is the model string, so every catalog model is reachable through
+the same key and the same base URL. A catalog-derived route is named
+`catalog:<catalog id>` and carries `catalog_derived: true` in route diagnostics
+and in `/health` provider status, so it is never mistaken in a log, a health
+payload or the admin panel for a route somebody typed into a file.
+
+`llm/profiles.json` therefore becomes **overrides and pins**: operator-tuned
+params, task tags, price overrides, non-default response policies, transports
+that cannot be synthesized, and `deployment_status` to switch something off. Its
+`routing_priority` integers no longer pick a model; they survive only as the
+anchors that calibrate the cloud family against local routes.
+
+The rules a synthesized route obeys, each of which is pinned by a test:
+
+- **Only the OpenRouter transport, and only with `OPENROUTER_API_KEY` set.**
+  Never a local route (there is no such thing as a model we do not host) and
+  never a direct-vendor route (its alias is named by the gateway, not derived).
+  The dispatch id is the bare catalog slug; `MODEL_GATEWAY_PREFIX` describes a
+  broker in front of the aggregator and does not apply to a route pointed
+  straight at it.
+- **Every gate a configured route passes.** Synthesis reads the *resolver's
+  output*, so the unliftable `:free` and `:batch` exclusions, the router
+  pseudo-model exclusion, the non-positive-price rejection, the lane's floors
+  and the lane's declared prompt-price ceiling have all already applied. It is
+  then put through the router's own `_selection_blocked_reason`, the same
+  function every configured route goes through.
+- **It can never serve `response_policy="local_only"`.** `local_only` is absent
+  from every entry in `SYNTHESIZED_RESPONSE_POLICIES` and must stay absent. Free
+  OpenRouter endpoints were previously found silently serving `local_only`
+  turns; a route the router invents for itself serving one would reopen that
+  breach wider, because nobody typed it where a reviewer could see it.
+- **`cost_tier` is derived from the catalog price, not invented**, so spend caps
+  and reporting keep working. One constant,
+  `SYNTHESIZED_PREMIUM_COMPLETION_PRICE_USD_PER_MILLION = 5.0`: premium above
+  $5.00/M *completion*, low_cost at or below. Completion is priced 3-5x input
+  and dominates the bill, and it puts the "cheap to prompt, expensive to answer"
+  pathology on the safe side of a cap. $5.00/M is where the configured table
+  already splits, with wide gaps either side. Low_cost profiles complete at
+  $0.20, $0.60 and $4.00/M, premium at $15 and $25/M. Strictly greater-than, so
+  `claude-haiku-4.5` at exactly $5.00/M classifies low_cost like its configured
+  sibling. This bucket is *not* how routes are ranked; ranking is cost per turn
+  at the lane's declared shape. A bucket has to be a property of the model, or
+  the same model would land in different buckets on different lanes.
+- **A configured profile wins for the same catalog id**, so a pin is never
+  silently discarded.
+- **It stays inside the existing controls.** Enablement, health, the circuit
+  breaker, key rotation and shutdown all see it, so it can be disabled, benched
+  and re-keyed like any other route.
+- **It inherits the cloud family's task fit and never invents one.** A
+  configured profile earns the `recommended_for` bonus for a hand-typed tag; a
+  catalog-derived route cleared the same task's *lane* against measured indices,
+  which is the machine-checkable version of the same claim, so it carries the
+  task, but only when a configured cloud route already claims it. Without the
+  first half the hand-typed tag list would still decide every tagged turn and
+  the candidate-set gap would merely have moved from `routing_priority` to
+  `recommended_for`; without the second half a turn tagged for a local profile
+  would start escalating.
+
+### Turning it off
+
+**On by default since 2026-08-01.** It previously shipped off and was set in no
+`.env`, no `.env.example`, no compose file and no deployment bundle, which made
+the resolver dead code and left live ordering to the sum of hand-typed
+`routing_priority` integers — a shortlist ranked by a stored human preference
+order. Correct behaviour that ships disabled is not behaviour.
+
+`ENABLE_CAPABILITY_ROUTING=0` is the escape hatch back to the legacy priority
+ordering, for a mis-tuned lane, without a redeploy. It also turns off catalog
+synthesis, since synthesis reads the resolver's output. Unsetting
+`OPENROUTER_API_KEY` turns off synthesis alone and leaves lane ordering on.
+
+When enabled, the lane's ranking *redeals the cloud family's own priority
+numbers* in lane order. Which cloud route gets the top anchor is the lane's
+answer; the numbers themselves are unchanged, so the calibration between the
+cloud family and local routes (the `best_value` lean, the task-fit weights)
+keeps working. Task fit, the tool-calling requirement, runtime health, provider
+construction, spend gates and concurrency are untouched.
 
 `MODEL_GATEWAY_PREFIX` (default `openrouter/`) maps a gateway alias to the
 catalog id. Transport mapping is configuration; a table asserting which model
@@ -128,9 +266,14 @@ These are the reasons it can be enabled on a live deployment:
   public catalog.
 - Benched routes are excluded using the router's existing breaker rather than a
   second, separate failure signal.
-- The lane, the winning model, and the rejection reasons are published into
-  route diagnostics, because automatic selection without a visible decision is
-  unauditable.
+- The lane, the winning model, the rejection reasons and the catalog-derived
+  routes (`capability_synthesized`) are all published into route diagnostics,
+  because automatic selection without a visible decision is unauditable.
+- A catalog-derived route is refused the same way a configured one is, and the
+  refusal is recorded: the `local_only` case appears in the candidate list with
+  `blocked_reason: not_allowed_for_response_policy` rather than just being
+  absent, so "it was considered and refused" and "it was never seen" are
+  distinguishable.
 
 ### Floors are reviewed, not guessed
 

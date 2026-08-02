@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -23,14 +22,6 @@ import httpx
 logger = logging.getLogger(__name__)
 
 DEFAULT_FAILURE_THRESHOLD = 3
-
-
-@dataclass
-class ValidationFailure:
-    provider_id: str
-    failure_type: str  # e.g., "invalid_api_key", "network_error", "timeout"
-    timestamp: str
-    details: str = ""
 
 
 class KeyValidationMonitor:

@@ -15,7 +15,6 @@ DISCOVERY_SIGNALS = (
     "where to start", "what should we automate", "worth automating", "help us decide", "not sure what to automate",
     "how can you help", "how do you help", "what can you do",
 )
-DOMAIN_SIGNALS = IMPLEMENTATION_SIGNALS + RESOURCE_SIGNALS + SERVICE_SIGNALS + PRICING_SIGNALS + DISCOVERY_SIGNALS + LEARNING_SIGNALS + ("automation", "automator", "security", "engineer", "student")
 CONFUSION_SIGNALS = ("confused", "lost", "don\'t understand", "do not understand", "not following", "break that down")
 URGENCY_SIGNALS = ("urgent", "production", "client", "blocked", "down", "asap")
 

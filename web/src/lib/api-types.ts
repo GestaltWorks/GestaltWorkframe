@@ -11,6 +11,10 @@ export type ProviderStatus = {
   model?: string;
   profile_name?: string;
   cost_tier?: string;
+  // True when the router built this route from the live catalog rather than
+  // from llm/profiles.json. Its name is `catalog:<catalog id>`. Shown so an
+  // operator can tell a route nobody typed into a file from one somebody did.
+  catalog_derived?: boolean;
   // Admin-only fields (present in /admin/api/health responses)
   routing_priority?: number;
   admin_enabled?: boolean;

@@ -110,21 +110,29 @@ def test_candidate_profiles_default_enabled_unless_explicitly_stopped():
     assert explicit_off.route_enabled_by_default() is False
 
 
-def test_store_recommends_profiles_by_task_and_priority(store: ProfileStore):
-    recommended = store.recommended("code_review", provider="claude")
+def test_store_parses_task_tags_and_evidence(store: ProfileStore):
+    """The fields the router and a reviewer read, straight off the store.
 
-    assert [profile.name for profile in recommended] == ["test-sonnet"]
-    assert recommended[0].model == "claude-sonnet-4-6"
-    assert recommended[0].context_window_tokens == 1000000
-    assert recommended[0].evidence[0].source == "test"
+    These used to be asserted through `ProfileStore.recommended()`, a task
+    query nothing in the application ever called. The query is gone; the facts
+    it happened to be reading still matter, so they are read directly.
+    """
+    sonnet = store.get("test-sonnet")
+
+    assert sonnet is not None
+    assert sonnet.model == "claude-sonnet-4-6"
+    assert sonnet.recommended_for == ["code_review", "coding"]
+    assert sonnet.context_window_tokens == 1000000
+    assert sonnet.evidence[0].source == "test"
 
 
-def test_store_recommends_opus_for_critical_review(store: ProfileStore):
-    recommended = store.recommended("critical_code_review", provider="claude")
+def test_store_parses_routing_priority(store: ProfileStore):
+    opus = store.get("test-opus")
 
-    assert [profile.name for profile in recommended] == ["test-opus"]
-    assert recommended[0].model == "claude-opus-4-7"
-    assert recommended[0].routing_priority == 100
+    assert opus is not None
+    assert opus.model == "claude-opus-4-7"
+    assert opus.recommended_for == ["critical_code_review", "deep_reasoning"]
+    assert opus.routing_priority == 100
 
 
 def test_store_handles_missing_file():
@@ -208,7 +216,12 @@ def test_repository_claude_profiles_use_current_api_ids():
     data = json.loads((ROOT / "llm" / "profiles.json").read_text(encoding="utf-8"))
     profiles = data["profiles"]
 
-    assert profiles["claude-haiku-4-5"]["model"] == "claude-haiku-4-5-20251001"
+    # Undated alias, matching the other Claude profiles in this file and the
+    # `direct` side of model_transport's alias table. The dated snapshot id it
+    # used to carry (`claude-haiku-4-5-20251001`) matched no entry in that
+    # table, so the direct route could never inherit the lane ranking and the
+    # aggregator was a single point of failure for this model.
+    assert profiles["claude-haiku-4-5"]["model"] == "claude-haiku-4-5"
     assert profiles["claude-sonnet-4-5"]["model"] == "claude-sonnet-4-5-20250929"
     assert profiles["claude-sonnet-4-6"]["model"] == "claude-sonnet-4-6"
     assert profiles["claude-opus-4-7"]["model"] == "claude-opus-4-7"

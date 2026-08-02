@@ -96,8 +96,19 @@ export const responseError = async (response: Response, fallback: string) => {
   return fallback;
 };
 
+/** "Cloud" the way the router defines it: anything that is not local.
+ *
+ * The panel used to enumerate `["low_cost", "premium"]` in three places, which
+ * meant any other tier was DISPLAYED as a local model, i.e. the panel would
+ * have told the operator a prompt stayed on the box when it did not. The
+ * backend answers this with `cost_tier != "local"` (ProviderRoute.is_cloud);
+ * an absent tier stays out of the cloud group because nothing is known about
+ * that route.
+ */
+export const isCloudTier = (costTier?: string) => Boolean(costTier) && costTier !== "local";
+
 export const reasonLabel = (reason?: string, model?: ProviderStatus) => {
-  if (reason === "model_not_available" && ["low_cost", "premium"].includes(model?.cost_tier || "")) {
+  if (reason === "model_not_available" && isCloudTier(model?.cost_tier)) {
     return "model ID is not listed by this provider/key";
   }
   const labels: Record<string, string> = {

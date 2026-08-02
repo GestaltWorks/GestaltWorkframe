@@ -47,10 +47,6 @@ def discovery_find_to_document(find: DiscoveryFind, source: DiscoverySource | No
     )
 
 
-def document_json_for_find(find: DiscoveryFind, source: DiscoverySource | None = None) -> str:
-    return discovery_find_to_document(find, source).model_dump_json()
-
-
 def document_for_find(find: DiscoveryFind, source: DiscoverySource | None = None) -> Document:
     if find.canonical_document_json:
         if len(find.canonical_document_json.encode("utf-8")) > MAX_CANONICAL_DOCUMENT_JSON_BYTES:

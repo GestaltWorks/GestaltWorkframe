@@ -29,9 +29,29 @@ def test_openrouter_key_selects_openrouter_with_defaults():
     cfg = resolve_provider_config({env.OPENROUTER_API_KEY: "sk-or-x"})
     assert cfg.kind == "openrouter"
     assert cfg.base_url == env.DEFAULT_OPENROUTER_BASE_URL
-    assert cfg.model == env.DEFAULT_OPENROUTER_MODEL
+    # No model default: the endpoint has one, the MODEL does not. The previous
+    # default was `openrouter/auto`, a router pseudo-model that delegates the
+    # routing decision away from the lane. Empty means the lane resolver decides.
+    assert cfg.model == ""
     assert cfg.api_key == "sk-or-x"
     assert cfg.fallback_enabled is False
+
+
+def test_the_package_ships_no_model_id_defaults():
+    """A model id in a shared package propagates to every consumer at once.
+
+    Both previous defaults are the case for this test. `openrouter/auto` is an
+    excluded router pseudo-model; `claude-3-5-sonnet-latest` names a model
+    retired 2025-10-28, so it resolved to nothing and returned HTTP 404 on every
+    consumer that had not overridden it.
+    """
+    for name in dir(env):
+        if not name.startswith("DEFAULT_"):
+            continue
+        value = getattr(env, name)
+        if not isinstance(value, str):
+            continue
+        assert "MODEL" not in name, f"{name} ships a model id default: {value!r}"
 
 
 def test_openrouter_overrides_base_and_model():
@@ -62,7 +82,7 @@ def test_local_uses_default_base_url():
     assert cfg.base_url == env.DEFAULT_LOCAL_BASE_URL
 
 
-def test_fallback_requires_both_flag_and_key():
+def test_fallback_requires_flag_key_and_a_named_model():
     # Flag on but no key -> disabled.
     cfg = resolve_provider_config(
         {env.OPENROUTER_API_KEY: "k", env.ENABLE_CLAUDE_FALLBACK: "true"}
@@ -73,7 +93,8 @@ def test_fallback_requires_both_flag_and_key():
         {env.OPENROUTER_API_KEY: "k", env.ANTHROPIC_API_KEY: "sk-ant"}
     )
     assert cfg.fallback_enabled is False
-    # Both -> enabled.
+    # Flag and key but no model named -> disabled, and visibly so. Previously
+    # this dispatched to a retired model and 404'd on every call.
     cfg = resolve_provider_config(
         {
             env.OPENROUTER_API_KEY: "k",
@@ -81,9 +102,49 @@ def test_fallback_requires_both_flag_and_key():
             env.ENABLE_CLAUDE_FALLBACK: "1",
         }
     )
+    assert cfg.fallback_enabled is False
+    assert cfg.anthropic_model == ""
+    # All three -> enabled.
+    cfg = resolve_provider_config(
+        {
+            env.OPENROUTER_API_KEY: "k",
+            env.ANTHROPIC_API_KEY: "sk-ant",
+            env.ANTHROPIC_MODEL: "claude-sonnet-4-6",
+            env.ENABLE_CLAUDE_FALLBACK: "1",
+        }
+    )
     assert cfg.fallback_enabled is True
     assert cfg.anthropic_api_key == "sk-ant"
-    assert cfg.anthropic_model == env.DEFAULT_ANTHROPIC_MODEL
+    assert cfg.anthropic_model == "claude-sonnet-4-6"
+
+
+def test_claude_model_is_a_documented_alias_for_anthropic_model():
+    """Setting either name must have a visible effect.
+
+    The platform's provider registry read CLAUDE_MODEL while this contract
+    declared ANTHROPIC_MODEL, so an operator setting one of them silently had no
+    effect on the other layer.
+    """
+    via_alias = resolve_provider_config(
+        {
+            env.ANTHROPIC_API_KEY: "sk-ant",
+            env.CLAUDE_MODEL_ALIAS: "claude-sonnet-4-6",
+            env.ENABLE_CLAUDE_FALLBACK: "1",
+        }
+    )
+    assert via_alias.anthropic_model == "claude-sonnet-4-6"
+    assert via_alias.fallback_enabled is True
+
+    # Canonical name wins when both are set.
+    both = resolve_provider_config(
+        {
+            env.ANTHROPIC_API_KEY: "sk-ant",
+            env.ANTHROPIC_MODEL: "canonical",
+            env.CLAUDE_MODEL_ALIAS: "alias",
+            env.ENABLE_CLAUDE_FALLBACK: "1",
+        }
+    )
+    assert both.anthropic_model == "canonical"
 
 
 def test_truthy_variants():
@@ -92,6 +153,7 @@ def test_truthy_variants():
             {
                 env.OPENROUTER_API_KEY: "k",
                 env.ANTHROPIC_API_KEY: "a",
+                env.ANTHROPIC_MODEL: "claude-sonnet-4-6",
                 env.ENABLE_CLAUDE_FALLBACK: raw,
             }
         )
@@ -101,6 +163,7 @@ def test_truthy_variants():
             {
                 env.OPENROUTER_API_KEY: "k",
                 env.ANTHROPIC_API_KEY: "a",
+                env.ANTHROPIC_MODEL: "claude-sonnet-4-6",
                 env.ENABLE_CLAUDE_FALLBACK: raw,
             }
         )

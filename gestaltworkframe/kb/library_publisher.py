@@ -52,10 +52,6 @@ class LibraryDeleteResult:
     path: str
 
 
-def library_publisher_configured() -> bool:
-    return _github_app_configured()
-
-
 async def publish_find_to_library(
     find: DiscoveryFind,
     source: DiscoverySource,

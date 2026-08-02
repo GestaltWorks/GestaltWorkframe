@@ -43,7 +43,6 @@ from gestaltworkframe.core.retention import RetentionPolicy, sweep as retention_
 from gestaltworkframe.core.router import ROUTING_STRATEGIES
 
 
-ADMIN_HANDOFF_LIMIT = 12
 DEFAULT_CLOUD_INPUT_TOKEN_CAP = 8000
 DEFAULT_CLOUD_OUTPUT_TOKEN_CAP = 2048
 

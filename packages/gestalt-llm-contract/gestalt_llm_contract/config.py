@@ -38,8 +38,9 @@ class ProviderConfig:
     """Normalized provider selection, independent of any transport.
 
     `kind` is the primary provider. `fallback_enabled` is True only when the
-    Anthropic fallback is both opted in and has a key, so callers do not have to
-    repeat that two-part check.
+    Anthropic fallback is opted in, has a key, AND names a model, so callers do
+    not have to repeat that three-part check. `model` may be empty on the
+    OpenRouter path: this package does not choose models, the lane resolver does.
     """
 
     kind: ProviderKind
@@ -72,14 +73,24 @@ def resolve_provider_config(values: Mapping[str, str]) -> ProviderConfig:
     """
     openrouter_key = _text(values, env.OPENROUTER_API_KEY)
     anthropic_key = _text(values, env.ANTHROPIC_API_KEY)
-    anthropic_model = _text(values, env.ANTHROPIC_MODEL, env.DEFAULT_ANTHROPIC_MODEL)
-    fallback = _bool(values, env.ENABLE_CLAUDE_FALLBACK) and bool(anthropic_key)
+    # ANTHROPIC_MODEL is canonical; CLAUDE_MODEL is the documented alias the
+    # platform's provider registry already used. Reading both is what stops an
+    # operator setting one and seeing no effect. There is no default: an unnamed
+    # model disables the fallback rather than guessing one (see env.py).
+    anthropic_model = _text(values, env.ANTHROPIC_MODEL) or _text(values, env.CLAUDE_MODEL_ALIAS)
+    fallback = (
+        _bool(values, env.ENABLE_CLAUDE_FALLBACK)
+        and bool(anthropic_key)
+        and bool(anthropic_model)
+    )
 
     if openrouter_key:
         return ProviderConfig(
             kind="openrouter",
             base_url=_text(values, env.OPENROUTER_BASE_URL, env.DEFAULT_OPENROUTER_BASE_URL),
-            model=_text(values, env.OPENROUTER_MODEL, env.DEFAULT_OPENROUTER_MODEL),
+            # Empty means "the lane resolver decides", which is the correct
+            # answer on the aggregator path. It is never a router pseudo-model.
+            model=_text(values, env.OPENROUTER_MODEL),
             api_key=openrouter_key,
             fallback_enabled=fallback,
             anthropic_api_key=anthropic_key,
