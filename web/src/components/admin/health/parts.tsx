@@ -129,7 +129,11 @@ export function ModelGroup({ title, models, open, onToggleOpen, disabled, onRout
             <tr key={`${model.profile_name || model.name}-${model.model}`} className="border-t border-brand-gold-warm/10">
               <td className="px-4 py-3"><input type="checkbox" aria-label={`Enable route ${providerName(model)}`} checked={model.admin_enabled !== false} disabled={disabled} onChange={(event) => onRouteToggle(routeName(model), event.target.checked)} className="h-4 w-4 accent-brand-gold disabled:cursor-wait disabled:opacity-60" /></td>
               <td className="px-4 py-3 text-brand-gold-warm">{providerName(model)}</td>
-              <td className="px-4 py-3">{model.deployment_status || "active"}{model.enabled_by_default === false ? " / default off" : ""}</td>
+              {/* "from catalog" means the router built this route from the live
+                  catalog rather than from llm/profiles.json. Worth saying on
+                  the row: nobody typed it into a file, so nobody will find it
+                  by grepping one. */}
+              <td className="px-4 py-3">{model.deployment_status || "active"}{model.enabled_by_default === false ? " / default off" : ""}{model.catalog_derived ? " / from catalog" : ""}</td>
               <td className="px-4 py-3">{model.runtime_group || "unknown"}</td>
               <td className="px-4 py-3">{model.cost_tier || "unknown"}</td>
               <td className="px-4 py-3">{model.role}</td>

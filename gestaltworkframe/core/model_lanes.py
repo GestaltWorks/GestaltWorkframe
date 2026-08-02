@@ -87,24 +87,23 @@ class Lane(BaseModel):
     """Declared turn shape. A lookup and a long-form build are not the same
     turn, and ranking both on one assumed shape picks the wrong model."""
 
-    prefer_vendors: list[str] = Field(default_factory=list)
-    """Ordered vendor prefixes, used as a TIE-BREAK KEY and nothing else.
-
-    Default empty, and it sits BELOW every measured axis and below cost, one
-    place above the model id. That placement is the whole of what makes it
-    survivable. A stored name preference is stale-prone in proportion to its
-    AUTHORITY, not its existence: as the lowest key, name a vendor that no
-    longer clears the floors and it is skipped; name one that is no longer best
-    and the measured keys have already placed something above it; name nothing
-    relevant and the order falls through to the id. It can only separate models
-    the measured axes have already declared EQUAL, which is the only place
-    taste is the remaining information.
-
-    It used to be the FIRST sort key, ahead of margin and cost, which made it
-    the selector rather than the tie-break: "resolve to a shortlist, then order
-    it by a stored human preference" is the mechanism
-    docs/standards/model-routing-policy.md records as built, run, and deleted.
-    """
+    # No `prefer_vendors` field, and there must not be one again.
+    #
+    # It survived one pass as a bottom-of-the-order tie-break key, kept alive by
+    # a single rationale: "customer-facing lanes must lead with Anthropic". The
+    # operator has since decided the opposite, that OPENROUTER leads. OpenRouter
+    # is a TRANSPORT, not a vendor to prefer, so a list of vendor name prefixes
+    # has nothing left to express: it cannot state "reach the catalog through
+    # the aggregator" (that is `model_transport.py`, which is configuration) and
+    # it cannot state "this lane deserves a stronger model" (that is a floor).
+    #
+    # If a lane should lead with a stronger model, RAISE THE LANE FLOOR to where
+    # the capability actually starts and resolve at tier `best`. The floor is a
+    # reviewable number that a reader can argue with, and `best` spends the
+    # headroom above it. A vendor name is neither: it is a judgement with a
+    # short shelf life, correctable only by editing config, and it re-admits the
+    # "stored human preference orders the shortlist" mechanism that
+    # docs/standards/model-routing-policy.md records as built, run and deleted.
 
     shortlist_size: int = 3
     """How many candidates to keep for fail-sideways retries before any
@@ -186,6 +185,16 @@ def _lanes_path(deployment_dir: Path | None) -> Path | None:
 # out that the knob does not exist instead of believing it worked.
 UNLIFTABLE_KEYS = ("allow_free_tier", "allow_batch_tier", "allow_router_models")
 
+# Keys that existed and were removed. Pydantic ignores unknown fields, so a
+# lanes.yaml still naming one would go on looking correct forever while doing
+# nothing. Report it with the replacement instead.
+REMOVED_KEYS = {
+    "prefer_vendors": (
+        "vendor preference is gone; raise the lane's floor to where the "
+        "capability starts and resolve at tier `best` instead"
+    ),
+}
+
 
 def load_lanes(deployment_dir: Path | None = None) -> dict[str, Lane]:
     """Load lanes from a deployment bundle, falling back to the defaults.
@@ -213,6 +222,14 @@ def load_lanes(deployment_dir: Path | None = None) -> dict[str, Lane]:
                         "rule and cannot be lifted by configuration. Ignoring it.",
                         name,
                         key,
+                    )
+            for key, replacement in REMOVED_KEYS.items():
+                if record.pop(key, None) is not None:
+                    logger.warning(
+                        "lanes.yaml lane %r sets %s, which no longer exists: %s",
+                        name,
+                        key,
+                        replacement,
                     )
             lanes[str(name)] = Lane(name=str(name), **record)
     except (OSError, ValueError, ValidationError) as exc:

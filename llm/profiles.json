@@ -1,4 +1,12 @@
 {
+  "_comment": [
+    "THIS FILE IS OVERRIDES AND PINS. IT IS NOT THE CANDIDATE SET.",
+    "The candidate set is the live OpenRouter catalog. core/model_resolver.py ranks the whole catalog against the turn's lane, and core/router.py constructs the winner on demand when nothing here covers it (a catalog-derived route, named 'catalog:<id>').",
+    "It used to be the candidate set, and that was the largest remaining defect in this repo's routing: the resolver ranked the whole catalog and the router then kept only the models somebody had already typed in here, so a better or cheaper model could ship and never be chosen. That is the stale-constant failure docs/standards/model-routing-policy.md exists to abolish, relocated from a model id to a curated list.",
+    "What a profile here is FOR, now: pinning a model with operator-tuned params, task tags, price overrides or a non-default response policy; enabling a transport that cannot be synthesized (local llama_cpp, a direct vendor SDK, any OpenAI-compatible endpoint that is not OpenRouter); and disabling something outright via deployment_status.",
+    "A profile here WINS over a synthesized route for the same catalog id, so a pin is never silently discarded.",
+    "routing_priority no longer decides which cloud route runs. The lane does, and the priority integers survive only as the anchors that calibrate the cloud family against local routes. Do not tune them expecting to pick a model."
+  ],
   "profiles": {
     "openrouter-deepseek-v4-flash": {
       "provider": "openrouter",

@@ -178,7 +178,7 @@ def _margin(model: CatalogModel, lane: Lane) -> float:
     return sum(max(0.0, (value or 0.0) - floor) for floor, value in declared)
 
 
-def _order(candidates: list[Candidate], tier: Tier, lane: Lane) -> list[Candidate]:
+def _order(candidates: list[Candidate], tier: Tier) -> list[Candidate]:
     """Rank to a TOTAL order, always ending in the model id.
 
     Without the id as the final key an exact tie falls through to the sort's
@@ -187,22 +187,17 @@ def _order(candidates: list[Candidate], tier: Tier, lane: Lane) -> list[Candidat
     between one vendor's models are structural: vendors price whole families the
     same on purpose.
 
-    `prefer_vendors` sits immediately above the id and below every measured key.
+    Every key above the id is MEASURED. There is no stored vendor preference and
+    no other name list anywhere in this order: a lane that should lead with a
+    stronger model raises its floor and resolves at tier `best`.
     """
-
-    def vendor_rank(candidate: Candidate) -> int:
-        for position, vendor in enumerate(lane.prefer_vendors):
-            if candidate.id.startswith(vendor):
-                return position
-        return len(lane.prefer_vendors)
-
     if tier == "best":
         # The cost ceiling here is EMERGENT: nothing can exceed the price of the
         # top-margin model unless it has more margin, in which case it IS the
         # top-margin model. No dollar constant is needed, and none appears.
-        key = lambda c: (-c.margin, c.cost_per_turn_usd, vendor_rank(c), c.id)
+        key = lambda c: (-c.margin, c.cost_per_turn_usd, c.id)
     elif tier == "cheap":
-        key = lambda c: (c.cost_per_turn_usd, -c.margin, vendor_rank(c), c.id)
+        key = lambda c: (c.cost_per_turn_usd, -c.margin, c.id)
     elif tier == "fast":
         # Speed is OBSERVED, never looked up. An unmeasured model sorts BEHIND
         # every measured one and is never excluded, because a model that is
@@ -215,14 +210,12 @@ def _order(candidates: list[Candidate], tier: Tier, lane: Lane) -> list[Candidat
             (c.observed_seconds or 0.0) * c.cost_per_turn_usd,
             c.cost_per_turn_usd,
             -c.margin,
-            vendor_rank(c),
             c.id,
         )
     else:  # auto
         key = lambda c: (
             -(c.margin / c.cost_per_turn_usd),
             c.cost_per_turn_usd,
-            vendor_rank(c),
             c.id,
         )
     return sorted(candidates, key=key)
@@ -362,7 +355,7 @@ def resolve_lane(
         # the failure mode where a human ends up confidently mistaken.
         objective = "no latency observed yet; lowest cost above the gate, margin breaks ties"
 
-    ordered = _order(candidates, tier, lane)
+    ordered = _order(candidates, tier)
     shortlist = tuple(ordered[: max(1, lane.shortlist_size)])
     resolution = Resolution(
         lane=lane.name,

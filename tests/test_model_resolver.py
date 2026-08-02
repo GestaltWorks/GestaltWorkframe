@@ -472,58 +472,67 @@ def test_every_default_lane_is_satisfiable_by_the_pinned_fallback():
         )
 
 
-# ---- vendor preference ---------------------------------------------------
+# ---- no vendor preference, at all ----------------------------------------
 
-def test_vendor_preference_is_a_tie_break_key_and_never_a_selector():
-    """It sits below every measured axis and below cost, above the id only.
+def test_a_lane_cannot_express_a_vendor_preference():
+    """The field is gone, not demoted.
 
-    A stored name preference is stale-prone in proportion to its AUTHORITY. As
-    the first sort key it WAS the selector, which is the "resolve to a
-    shortlist, then order it by a stored human preference" mechanism the
-    doctrine records as built and deleted: a better model can ship and never be
-    chosen, and a listed model that has gone bad still wins.
+    It survived one pass as a bottom-of-the-order tie-break key on a single
+    rationale: customer-facing lanes must lead with Anthropic. The operator has
+    since decided that OPENROUTER leads, and OpenRouter is a transport rather
+    than a vendor to prefer, so a list of vendor name prefixes has nothing left
+    to say. A lane that should lead with a stronger model raises its floor and
+    resolves at tier `best`.
     """
-    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
-    cheaper_other = _model("vendor/cheap", prompt=0.1, completion=0.2)
-    preferred_but_dearer = _model("anthropic/claude-x", prompt=3.0, completion=15.0)
+    assert "prefer_vendors" not in Lane.model_fields
+    assert not hasattr(Lane(name="t"), "prefer_vendors")
 
-    result = resolve_lane(lane, [cheaper_other, preferred_but_dearer], tier="cheap")
 
-    assert [c.id for c in result.candidates] == ["vendor/cheap", "anthropic/claude-x"], (
-        "a measured axis must outrank the stored vendor preference"
+def test_a_lanes_yaml_still_naming_a_vendor_preference_is_reported_not_obeyed(
+    tmp_path: Path, caplog
+):
+    """Pydantic ignores unknown fields, so silence would look like agreement."""
+    bundle = tmp_path / "brand"
+    bundle.mkdir()
+    (bundle / "lanes.yaml").write_text(
+        "lanes:\n"
+        "  guide:\n"
+        "    must: [tools]\n"
+        "    min_intelligence: 45\n"
+        "    prefer_vendors: ['anthropic/']\n",
+        encoding="utf-8",
+    )
+    with caplog.at_level("WARNING"):
+        lanes = load_lanes(bundle)
+
+    assert not hasattr(lanes["guide"], "prefer_vendors")
+    assert lanes["guide"].min_intelligence == 45, "the rest of the record still loads"
+    warnings = [record.getMessage() for record in caplog.records]
+    assert any("prefer_vendors" in message for message in warnings)
+    assert any("tier `best`" in message for message in warnings)
+
+
+def test_the_answer_to_leading_with_a_stronger_model_is_the_floor_and_the_tier():
+    """The doctrine's replacement for a vendor list, pinned as behaviour.
+
+    Same catalog, same tier. Raising the floor to where the capability starts is
+    what moves the winner, and it is a reviewable number rather than a name.
+    """
+    adequate_and_cheap = _model("vendor/adequate", prompt=0.1, completion=0.2, intelligence=52)
+    strong_and_dear = _model("anthropic/claude-x", prompt=3.0, completion=15.0, intelligence=60)
+    catalog = [adequate_and_cheap, strong_and_dear]
+
+    low_bar = resolve_lane(Lane(name="t", must=["tools"], min_intelligence=45), catalog, tier="auto")
+    raised_bar = resolve_lane(Lane(name="t", must=["tools"], min_intelligence=55), catalog, tier="auto")
+
+    assert low_bar.best is not None and low_bar.best.id == "vendor/adequate"
+    assert raised_bar.best is not None and raised_bar.best.id == "anthropic/claude-x"
+    assert "vendor/adequate" not in {c.id for c in raised_bar.candidates}, (
+        "the floor excludes outright; it is not a preference something can outrank"
     )
 
 
-def test_vendor_preference_separates_models_the_measured_axes_call_equal():
-    """Where it CAN act: an exact tie, which is where taste is what is left."""
-    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
-    same_price_a = _model("aaa/model", prompt=1.0, completion=5.0)
-    same_price_b = _model("anthropic/claude-x", prompt=1.0, completion=5.0)
-
-    result = resolve_lane(lane, [same_price_a, same_price_b], tier="cheap")
-
-    assert [c.id for c in result.candidates] == ["anthropic/claude-x", "aaa/model"]
-
-
-def test_vendor_preference_never_admits_an_ineligible_model():
-    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
-    preferred_but_broken = _model("anthropic/no-tools", prompt=0.01, completion=0.02, params=frozenset())
-    ok = _model("vendor/ok", prompt=1.0, completion=4.0)
-
-    result = resolve_lane(lane, [preferred_but_broken, ok])
-
-    assert [c.id for c in result.candidates] == ["vendor/ok"]
-    assert any("missing required parameter" in r.reason for r in result.rejections)
-
-
-def test_lane_still_resolves_when_no_preferred_vendor_qualifies():
-    """The preference must not make a lane unroutable."""
-    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
-    result = resolve_lane(lane, [_model("vendor/only-option", prompt=1.0, completion=4.0)])
-    assert [c.id for c in result.candidates] == ["vendor/only-option"]
-
-
-def test_no_vendor_preference_leaves_ordering_purely_objective():
+def test_ordering_is_measured_all_the_way_down_to_the_model_id():
     lane = Lane(name="t", must=["tools"])
     cheap = _model("vendor/cheap", prompt=0.1, completion=0.2)
     pricey = _model("anthropic/claude-x", prompt=9.0, completion=40.0)

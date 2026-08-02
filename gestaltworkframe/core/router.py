@@ -3,20 +3,23 @@ import logging
 import math
 import time
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import os
 from pathlib import Path
 
+from gestalt_llm_contract import env as llm_env
+
 from gestaltworkframe.core.cloud_budget import CloudBudgetGate, MultiProviderBudgetGate
-from gestaltworkframe.core.model_catalog import load_cached_catalog_sync
+from gestaltworkframe.core.model_catalog import CatalogModel, load_cached_catalog_sync
 from gestaltworkframe.core.model_lanes import Lane, load_lanes
-from gestaltworkframe.core.model_resolver import resolve_lane
+from gestaltworkframe.core.model_profile import GenerationParams
+from gestaltworkframe.core.model_resolver import Resolution, resolve_lane
 from gestaltworkframe.core.model_transport import load_transport_map
-from gestaltworkframe.core.providers import LLMProvider
+from gestaltworkframe.core.providers import LLMProvider, OpenAICompatibleProvider
 from gestaltworkframe.core.runtime import GenerationConcurrencyPolicy, RuntimeManager
 
 logger = logging.getLogger(__name__)
@@ -114,6 +117,91 @@ def is_free_tier_model(model_id: str) -> bool:
     return any(segment in FREE_TIER_SEGMENTS for segment in lowered.split(":")[1:])
 
 
+# ---------------------------------------------------------------------------
+# Catalog-derived routes: closing the candidate-set gap
+# ---------------------------------------------------------------------------
+#
+# resolve_lane ranks the WHOLE live catalog, but the router used to keep only
+# the routes it already had configured in llm/profiles.json:
+#
+#     cleared = [r for r in cloud_routes if self._catalog_id(r.model) in rank]
+#
+# So it REORDERED a hand-typed list and never SELECTED from the catalog. A
+# better or cheaper model could ship and never be chosen. That is the same
+# stale-constant failure the whole doctrine exists to abolish, relocated from a
+# model id to a curated list, and the doctrine names it outright: "resolve to a
+# shortlist, then order it by a stored human preference" is a hardwire with a
+# config file in front of it.
+#
+# The fix is to let the lane winner be CONSTRUCTED on demand. It is only clean
+# because the OpenRouter transport is fully generic: a route is
+# OpenAICompatibleProvider(base_url, api_key, model, params) where the only
+# per-model input is the model string, so every catalog model is reachable
+# through the same key and the same base URL. Nothing else is synthesizable and
+# nothing else is synthesized: never a local route (there is no such thing as a
+# model we do not host) and never a direct-vendor route (its alias is named by
+# the gateway, not derivable).
+#
+# llm/profiles.json therefore stops being the candidate set. It is OVERRIDES AND
+# PINS: a configured profile still wins over a synthesized route for the same
+# catalog id, so operator params, task tags and price overrides are never
+# silently discarded.
+SYNTHESIZED_ROUTE_PREFIX = "catalog:"
+
+# Which spend bucket a catalog-derived route lands in, so caps and reporting
+# keep working instead of being handed an invented tier.
+#
+# One number: the model's COMPLETION price. Completion is priced 3-5x input, so
+# it dominates the bill on any turn that produces real work, and the pathology
+# the doctrine names by name -- cheap to prompt, expensive to answer -- lands on
+# the premium side, which is the safe side of a spend cap.
+#
+# $5.00/M is where the configured table already splits, with a wide gap on
+# either side rather than a knife edge: every low_cost profile completes at
+# $0.20 (deepseek-v4-flash), $0.60 (gemini-2.5-flash) or $4.00 (claude-haiku-4-5)
+# per million, and every premium profile at $15.00 (sonnet) or $25.00 (opus).
+# The comparison is strictly greater-than, so claude-haiku-4.5's catalog rate of
+# exactly $5.00/M classifies low_cost, matching its configured sibling.
+#
+# This bucket is NOT how routes are ranked. Ranking is cost per turn at the
+# lane's declared shape, computed in model_resolver against input, output and
+# cache-read rates. A bucket has to be a property of the MODEL rather than of
+# the turn, or the same model would land in different buckets on different lanes
+# and a spend cap would stop meaning anything.
+SYNTHESIZED_PREMIUM_COMPLETION_PRICE_USD_PER_MILLION = 5.0
+
+# Which response policies a catalog-derived route may serve, per bucket. This
+# mirrors what the configured profiles declare for the same buckets, with ONE
+# property that is load-bearing rather than cosmetic:
+#
+#     "local_only" appears in neither list, and must never appear in either.
+#
+# A synthesized route is a third party on the public internet. The previous pass
+# proved free OpenRouter endpoints had been silently serving local_only turns,
+# which is the exact data-handling breach being closed; letting a route the
+# router invented for itself serve local_only would reopen it wider, because
+# nobody typed the route into a file where a reviewer could see it.
+SYNTHESIZED_RESPONSE_POLICIES: dict[str, list[str]] = {
+    "low_cost": ["local_then_low_cost", "local_then_claude_if_high_value"],
+    "premium": ["local_then_claude_if_high_value"],
+}
+
+# Published agentic index at or above which a catalog-derived route claims
+# "strong" tool calling. `agentic_index` is the doctrine's stated proxy for tool
+# adherence, and it is measured, which a hand-typed profile string is not.
+# 44.4 is the p90 of the published distribution (2026-07-25, n=107: p50 18.2,
+# p90 44.4, max 55.3), the same capture the guide lane's floors were calibrated
+# against. Top decile of measured tool adherence is the honest reading of
+# "strong"; anything else that publishes `tools` claims "ok".
+SYNTHESIZED_STRONG_TOOL_AGENTIC_INDEX = 44.4
+
+# A synthesized route has no operator-tuned generation params by definition:
+# that is precisely what a configured profile carries and why one wins over a
+# synthesized route for the same catalog id. Spend caps still override this via
+# CloudBudgetGate.config.max_output_tokens_per_call.
+SYNTHESIZED_MAX_OUTPUT_TOKENS = 4096
+
+
 ROUTE_COST_ADJUSTMENTS = {
     "best_value": {"local": 120, "low_cost": 40, "premium": 0},
     "prefer_local": {"local": 300, "low_cost": 75, "premium": 0},
@@ -146,6 +234,13 @@ class ProviderRoute:
     output_price_usd_per_million: float = 0.0
     provider_budget_id: str = "default"
     preferred_provider_id: str = ""
+    catalog_derived: bool = False
+    """Built on demand from the live catalog rather than from llm/profiles.json.
+
+    Surfaced in diagnostics, health output and the admin panel so a route nobody
+    typed into a file is never mistaken for one somebody did. The name carries
+    the same signal (`catalog:<id>`), because a log line only has the name.
+    """
 
     @property
     def is_cloud(self) -> bool:
@@ -218,6 +313,13 @@ class LLMRouter:
         self._health_cache_ttl_seconds = max(0.0, health_cache_ttl_seconds)
         self._health_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._last_route_decision: dict[str, Any] = {}
+        # Catalog-derived routes, keyed by catalog id. Cached so the httpx
+        # client behind a synthesized route is built once and can be closed and
+        # re-keyed like any other, not rebuilt per turn and leaked. It holds one
+        # entry per model that has ever won a lane in this process, which is
+        # bounded by lanes x shortlist_size at any moment and grows only as
+        # slowly as the catalog's winners change.
+        self._synthesized_routes: dict[str, ProviderRoute] = {}
         self.routing_strategy = self._clean_routing_strategy(routing_strategy)
         self.runtime_manager = runtime_manager
         self.generation_concurrency_policy = generation_concurrency_policy or GenerationConcurrencyPolicy.from_env()
@@ -259,9 +361,19 @@ class LLMRouter:
             configured=True,
         )
 
+    def _all_routes(self) -> list[ProviderRoute]:
+        """Configured routes plus every catalog-derived route built so far.
+
+        Enablement, health, key rotation, the breaker and shutdown all have to
+        see a synthesized route: one the operator cannot disable, cannot see the
+        health of and cannot rotate a key on would be a route outside the
+        controls, which is worse than the stale list it replaces.
+        """
+        return [*self.routes, *self._synthesized_routes.values()]
+
     async def close(self) -> None:
         closed: set[int] = set()
-        for route in self.routes:
+        for route in self._all_routes():
             provider = route.provider
             if provider is None or id(provider) in closed or not hasattr(provider, "close"):
                 continue
@@ -275,7 +387,7 @@ class LLMRouter:
         Returns the count of providers updated.
         """
         updated: set[int] = set()
-        for route in self.routes:
+        for route in self._all_routes():
             if route.provider_budget_id != provider_budget_id:
                 continue
             provider = route.provider
@@ -315,7 +427,7 @@ class LLMRouter:
         check_disabled_local_routes: bool = False,
     ) -> list[dict[str, Any]]:
         statuses = []
-        for route in self.routes:
+        for route in self._all_routes():
             health = {
                 "endpoint_healthy": False,
                 "model_available": False,
@@ -364,6 +476,7 @@ class LLMRouter:
                 "recommended_for": route.recommended_for,
                 "avoid_for": route.avoid_for,
                 "routing_priority": route.routing_priority,
+                "catalog_derived": route.catalog_derived,
                 **runtime,
             })
         return statuses
@@ -490,7 +603,7 @@ class LLMRouter:
         return ""
 
     def route_enabled(self, route_name: str) -> bool:
-        route = next((item for item in self.routes if item.name == route_name), None)
+        route = next((item for item in self._all_routes() if item.name == route_name), None)
         if route and route.deployment_status == "disabled":
             return False
         if route_name in self._route_overrides:
@@ -499,12 +612,12 @@ class LLMRouter:
 
     def set_route_enabled(self, route_name: str, enabled: bool) -> None:
         self._route_overrides[route_name] = enabled
-        route = next((item for item in self.routes if item.name == route_name), None)
+        route = next((item for item in self._all_routes() if item.name == route_name), None)
         if route:
             self._health_cache.pop(self._route_key(route), None)
 
     def route_overrides(self) -> dict[str, bool]:
-        return {route.name: self.route_enabled(route.name) for route in self.routes}
+        return {route.name: self.route_enabled(route.name) for route in self._all_routes()}
 
     def _clean_routing_strategy(self, strategy: str | None) -> str:
         value = (strategy or "best_value").strip().lower()
@@ -568,12 +681,147 @@ class LLMRouter:
         name = TASK_LANES.get((task or "").strip(), DEFAULT_LANE)
         return lanes.get(name) or lanes[DEFAULT_LANE]
 
+    @staticmethod
+    def _openrouter_credentials() -> tuple[str, str]:
+        """The one key and base URL every catalog model is reachable through.
+
+        Empty key means no synthesis at all. This is the same pair
+        `provider_registry._route_from_openrouter_profile` builds a configured
+        OpenRouter route from, and the dispatch id is the BARE catalog id for
+        the same reason it is there: the OpenRouter API keys models by catalog
+        slug. `MODEL_GATEWAY_PREFIX` describes a broker in front of the
+        aggregator and does not apply to a route pointed straight at it.
+        """
+        key = os.getenv(llm_env.OPENROUTER_API_KEY, "").strip()
+        base_url = os.getenv(llm_env.OPENROUTER_BASE_URL, "").strip() or llm_env.DEFAULT_OPENROUTER_BASE_URL
+        return key, base_url
+
+    @staticmethod
+    def _catalog_cost_tier(model: CatalogModel) -> str:
+        """Spend bucket from the published price. See the constant's note."""
+        completion_per_million = model.completion_price * 1_000_000
+        if completion_per_million > SYNTHESIZED_PREMIUM_COMPLETION_PRICE_USD_PER_MILLION:
+            return "premium"
+        return "low_cost"
+
+    def _synthesized_base_route(self, model: CatalogModel) -> ProviderRoute | None:
+        """Build (once) the catalog-derived route for one model, or None.
+
+        The provider is cached so its httpx client is created once and stays
+        visible to close(), rotate_provider_key() and the health path.
+        """
+        cached = self._synthesized_routes.get(model.id)
+        if cached is not None:
+            return cached
+        api_key, base_url = self._openrouter_credentials()
+        if not api_key:
+            return None
+        provider = OpenAICompatibleProvider(
+            base_url=base_url,
+            api_key=api_key,
+            model=model.id,
+            params=GenerationParams(max_tokens=SYNTHESIZED_MAX_OUTPUT_TOKENS),
+        )
+        capabilities = ["chat", "rag_answering"]
+        if model.supports("tools"):
+            capabilities.append("tools")
+        if (model.agentic_index or 0.0) >= SYNTHESIZED_STRONG_TOOL_AGENTIC_INDEX:
+            tool_quality = "strong"
+        elif model.supports("tools"):
+            tool_quality = "ok"
+        else:
+            tool_quality = "none"
+        route = ProviderRoute(
+            name=f"{SYNTHESIZED_ROUTE_PREFIX}{model.id}",
+            provider=provider,
+            provider_type="openrouter",
+            model=model.id,
+            role="secondary",
+            cost_tier=self._catalog_cost_tier(model),
+            allowed_response_policies=list(
+                SYNTHESIZED_RESPONSE_POLICIES[self._catalog_cost_tier(model)]
+            ),
+            # No routing_priority. A catalog-derived route has no hand-typed
+            # integer to carry, which is the entire point; ordering comes from
+            # the lane, redealt onto the cloud family's own anchors.
+            routing_priority=0,
+            configured=True,
+            deployment_status="active",
+            runtime_group="openrouter",
+            enabled_by_default=True,
+            capabilities=capabilities,
+            tool_calling_quality=tool_quality,
+            input_price_usd_per_million=model.prompt_price * 1_000_000,
+            output_price_usd_per_million=model.completion_price * 1_000_000,
+            provider_budget_id="openrouter",
+            catalog_derived=True,
+        )
+        self._synthesized_routes[model.id] = route
+        return route
+
+    def _synthesize_cloud_routes(
+        self,
+        resolution: Resolution,
+        configured_cloud: list[ProviderRoute],
+        task: str | None,
+    ) -> list[ProviderRoute]:
+        """Catalog-derived routes for lane winners nothing configured covers.
+
+        Every candidate here already cleared the lane inside `resolve_lane`,
+        which means it has already passed the unliftable `:free` and `:batch`
+        exclusions, the router pseudo-model exclusion, the non-positive-price
+        rejection, the lane's floors and the lane's DECLARED PRICE CEILING. The
+        checks repeated below are belt and braces on a data-handling rule, not
+        redundancy for its own sake: they run against the DISPATCH id, which is
+        the string that would actually be sent.
+        """
+        configured_ids = {self._catalog_id(route.model) for route in configured_cloud}
+        # A configured profile earns +1000 from `recommended_for` naming this
+        # task. A catalog-derived route cleared the same task's LANE against
+        # measured indices, which is the machine-checkable version of the same
+        # claim, so it carries the task as its own recommendation -- but ONLY
+        # when the cloud family already claims the task. Without the first half
+        # the hand-typed tag list would still decide every tagged turn and the
+        # candidate-set gap would merely have moved from `routing_priority` to
+        # `recommended_for`. Without the second half a synthesized route would
+        # introduce a cloud task match that did not exist before, and a turn
+        # tagged for a local profile would start escalating.
+        cloud_claims_task = any(
+            self._task_matches(task, route.recommended_for) for route in configured_cloud
+        )
+        synthesized: list[ProviderRoute] = []
+        for candidate in resolution.candidates:
+            model = candidate.model
+            if model.id in configured_ids:
+                continue  # an operator's pin, params and overrides win
+            if is_free_tier_model(model.id) or model.is_batch_tier or model.is_router_pseudo_model:
+                continue
+            if not (candidate.cost_per_turn_usd > 0):
+                continue
+            base = self._synthesized_base_route(model)
+            if base is None:
+                return []  # no key: nothing is reachable, so synthesize nothing
+            synthesized.append(
+                replace(
+                    base,
+                    cost_tier=self._catalog_cost_tier(model),
+                    allowed_response_policies=list(
+                        SYNTHESIZED_RESPONSE_POLICIES[self._catalog_cost_tier(model)]
+                    ),
+                    input_price_usd_per_million=model.prompt_price * 1_000_000,
+                    output_price_usd_per_million=model.completion_price * 1_000_000,
+                    recommended_for=[task] if (cloud_claims_task and task) else [],
+                )
+            )
+        return synthesized
+
     def _capability_order(
         self,
         cloud_routes: list[ProviderRoute],
         task: str | None,
         diagnostics: dict[str, Any],
         strategy: str | None = None,
+        gate: Callable[[ProviderRoute], str] | None = None,
     ) -> list[ProviderRoute]:
         """Order cloud routes by resolving the turn's lane against the catalog.
 
@@ -582,10 +830,19 @@ class LLMRouter:
         last: an unlisted model is unranked, not disqualified, and dropping it
         would take a working self-hosted or private route offline.
 
+        When `gate` is supplied the candidate set is the CATALOG, not
+        llm/profiles.json: lane winners nothing configured covers are
+        synthesized onto the OpenRouter transport and then put through that same
+        gate, which is the caller's own `_selection_blocked_reason`. A
+        synthesized route therefore passes every check a configured route
+        passes, including the response-policy rules that keep any cloud route
+        out of a `local_only` turn. A caller that only wants an ordering (there
+        is no gate to run and nothing to dispatch) passes no gate and gets none.
+
         Falls back to the caller's existing order if nothing clears the lane,
         so a mis-tuned floor degrades the ordering rather than the service.
         """
-        if not cloud_routes:
+        if not cloud_routes and gate is None:
             return cloud_routes
 
         lane = self._lane_for(task)
@@ -599,14 +856,30 @@ class LLMRouter:
             if self._route_key(route) in self._route_breaker_open
             or self._route_error_count.get(self._route_key(route), 0) >= self.error_threshold
         }
+        benched |= {
+            route.model
+            for route in self._synthesized_routes.values()
+            if self._route_key(route) in self._route_breaker_open
+            or self._route_error_count.get(self._route_key(route), 0) >= self.error_threshold
+        }
         resolution = resolve_lane(lane, catalog, tier=tier, benched=benched)
+
+        candidates = list(cloud_routes)
+        if gate is not None:
+            for route in self._synthesize_cloud_routes(resolution, cloud_routes, task):
+                blocked = gate(route)
+                diagnostics.setdefault("candidates", []).append(
+                    self._candidate_diagnostic(route, blocked, task, strategy)
+                )
+                if not blocked:
+                    candidates.append(route)
 
         rank = {candidate.id: position for position, candidate in enumerate(resolution.candidates)}
         known = {model.id for model in catalog}
         transports = self._transports()
 
-        cleared = [r for r in cloud_routes if self._catalog_id(r.model) in rank]
-        unlisted = [r for r in cloud_routes if self._catalog_id(r.model) not in known]
+        cleared = [r for r in candidates if self._catalog_id(r.model) in rank]
+        unlisted = [r for r in candidates if self._catalog_id(r.model) not in known]
         # Model rank first, then transport: the aggregator is primary and the
         # direct provider is the backup for the SAME model, so a failure of the
         # aggregator retries that model directly before moving to another one.
@@ -616,6 +889,7 @@ class LLMRouter:
         diagnostics["capability_tier"] = resolution.tier
         diagnostics["capability_objective"] = resolution.objective
         diagnostics["capability_choice"] = resolution.explain()
+        diagnostics["capability_synthesized"] = [r.name for r in candidates if r.catalog_derived]
         diagnostics["capability_rejected"] = [
             f"{rejection.model_id}: {rejection.reason}"
             for rejection in resolution.rejections
@@ -625,7 +899,8 @@ class LLMRouter:
         ordered = cleared + unlisted
         if not ordered:
             diagnostics["capability_choice"] = (
-                f"lane {lane.name}: no configured cloud route cleared it; keeping static order"
+                f"lane {lane.name}: nothing cleared it, configured or catalog-derived; "
+                "keeping static order"
             )
             return cloud_routes
         return ordered
@@ -657,9 +932,12 @@ class LLMRouter:
             "empty_reason": "",
             "concurrency": self._generation_concurrency_snapshot_unlocked(),
         }
-        routes = []
-        for route in self.routes:
-            blocked_reason = self._selection_blocked_reason(
+
+        # The one gate every route goes through, configured or catalog-derived.
+        # A synthesized route that skipped any part of this would be a route
+        # outside the policy, which is the failure it exists to fix, inverted.
+        def gate(route: ProviderRoute) -> str:
+            return self._selection_blocked_reason(
                 route,
                 force_secondary,
                 cloud_allowed,
@@ -668,22 +946,13 @@ class LLMRouter:
                 context_cloud_eligible,
                 require_tools,
             )
-            score = None if blocked_reason else self._route_score(route, task, strategy)
-            diagnostics["candidates"].append({
-                "name": route.name,
-                "model": route.model,
-                "cost_tier": route.cost_tier,
-                "deployment_status": route.deployment_status,
-                "runtime_group": route.runtime_group,
-                "enabled": self.route_enabled(route.name),
-                "supports_tools": route.supports_tools,
-                "tool_calling_quality": route.tool_calling_quality,
-                "score": score,
-                "blocked_reason": blocked_reason,
-                "recommended_match": self._task_matches(task, route.recommended_for),
-                "avoid_match": self._task_matches(task, route.avoid_for),
-                **self._runtime_status(route, self._cached_provider_health(route)),
-            })
+
+        routes = []
+        for route in self.routes:
+            blocked_reason = gate(route)
+            diagnostics["candidates"].append(
+                self._candidate_diagnostic(route, blocked_reason, task, strategy)
+            )
             if not blocked_reason:
                 routes.append(route)
         local = [route for route in routes if not route.is_cloud]
@@ -697,7 +966,7 @@ class LLMRouter:
         # doctrine records as deleted.
         capability_priority: dict[str, int] = {}
         if self._capability_routing_enabled():
-            reordered = self._capability_order(cloud, task, diagnostics, strategy)
+            reordered = self._capability_order(cloud, task, diagnostics, strategy, gate=gate)
             if reordered is not cloud:
                 # Redeal the cloud family's OWN priority numbers in lane order.
                 # Which cloud route gets the top anchor is now the lane's answer
@@ -707,7 +976,16 @@ class LLMRouter:
                 # task-fit weights) keeps working exactly as it did. Inventing a
                 # fresh scale here silently overpowered that lean and sent
                 # routine, task-less turns to cloud.
-                anchors = sorted((route.routing_priority for route in cloud), reverse=True)
+                # The anchor pool is every cloud candidate the turn had, not
+                # only the survivors: a lane that drops two configured routes
+                # must not also shrink the cloud family's top score against
+                # local. Catalog-derived routes contribute their own (zero)
+                # priority, so they widen the pool without inflating it.
+                anchors = sorted(
+                    [route.routing_priority for route in cloud]
+                    + [route.routing_priority for route in reordered if route.catalog_derived],
+                    reverse=True,
+                )
                 capability_priority = {
                     route.name: anchors[position] if position < len(anchors) else 0
                     for position, route in enumerate(reordered)
@@ -739,6 +1017,36 @@ class LLMRouter:
             diagnostics["ordered_routes"],
         )
         return ordered, diagnostics
+
+    def _candidate_diagnostic(
+        self,
+        route: ProviderRoute,
+        blocked_reason: str,
+        task: str | None,
+        strategy: str | None,
+    ) -> dict[str, Any]:
+        """One route's line in the decision record.
+
+        Configured and catalog-derived routes report identically apart from the
+        `catalog_derived` flag, so "where did this route come from" and "why did
+        it lose" have the same answer shape for both.
+        """
+        return {
+            "name": route.name,
+            "model": route.model,
+            "cost_tier": route.cost_tier,
+            "deployment_status": route.deployment_status,
+            "runtime_group": route.runtime_group,
+            "enabled": self.route_enabled(route.name),
+            "supports_tools": route.supports_tools,
+            "tool_calling_quality": route.tool_calling_quality,
+            "score": None if blocked_reason else self._route_score(route, task, strategy),
+            "blocked_reason": blocked_reason,
+            "recommended_match": self._task_matches(task, route.recommended_for),
+            "avoid_match": self._task_matches(task, route.avoid_for),
+            "catalog_derived": route.catalog_derived,
+            **self._runtime_status(route, self._cached_provider_health(route)),
+        }
 
     def _selection_blocked_reason(
         self,
@@ -961,7 +1269,7 @@ class LLMRouter:
                     "open": self._route_key(route) in self._route_breaker_open,
                     "error_count": self._route_error_count.get(self._route_key(route), 0),
                 }
-                for route in self.routes
+                for route in self._all_routes()
             },
         }
 
