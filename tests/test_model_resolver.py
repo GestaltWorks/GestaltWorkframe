@@ -60,7 +60,7 @@ def _model(
 
 def test_tool_calling_is_a_filter_not_a_preference():
     """A cheap model that cannot call tools is not cheap, it is broken."""
-    lane = Lane(name="t", must=["tools"], prefer="cost")
+    lane = Lane(name="t", must=["tools"])
     cheap_no_tools = _model("vendor/cheap", prompt=0.01, completion=0.02, params=frozenset())
     pricier_with_tools = _model("vendor/capable", prompt=2.0, completion=8.0)
 
@@ -72,7 +72,7 @@ def test_tool_calling_is_a_filter_not_a_preference():
 
 def test_free_tier_is_excluded_before_price_is_considered():
     """Zero is a degenerate optimum; `:free` trains on submitted prompts."""
-    lane = Lane(name="t", must=["tools"], prefer="cost")
+    lane = Lane(name="t", must=["tools"])
     free = _model("vendor/model:free", prompt=0.0, completion=0.0)
     paid = _model("vendor/model", prompt=1.0, completion=4.0)
 
@@ -82,14 +82,50 @@ def test_free_tier_is_excluded_before_price_is_considered():
     assert any("free tier excluded" in r.reason for r in result.rejections)
 
 
-def test_free_tier_can_be_opted_into_explicitly():
-    lane = Lane(name="t", must=["tools"], prefer="cost", allow_free_tier=True)
+def test_the_free_tier_exclusion_cannot_be_lifted_by_configuration():
+    """No lane field, env var or config key may re-admit a `:free` endpoint.
+
+    It is a DATA-HANDLING rule, not a cost preference: free tiers generally
+    train on submitted prompts, and no setting makes a training corpus forget.
+    A lane used to carry `allow_free_tier: bool = False` with the docstring
+    "Opt-in only", and lanes load from a per-deployment lanes.yaml, so that
+    field WAS an operator setting.
+    """
+    assert "allow_free_tier" not in Lane.model_fields
+
+    # Even if a deployment writes the key, it is dropped rather than honoured.
+    lane = Lane(name="t", must=["tools"], allow_free_tier=True)  # type: ignore[call-arg]
     result = resolve_lane(lane, [_model("vendor/model:free", prompt=0.0, completion=0.0)])
-    assert [c.id for c in result.candidates] == ["vendor/model:free"]
+    assert result.candidates == ()
+    assert any("free tier excluded" in r.reason for r in result.rejections)
+
+
+def test_batch_tier_and_router_pseudo_models_are_excluded():
+    """Both win a cost ranking outright, for two different reasons.
+
+    A `:batch` SKU publishes its interactive sibling's indices, so no quality
+    floor can catch it: it clears every floor, undercuts the real endpoint by
+    about half, and then fails a synchronous turn by arriving hours later.
+    A router pseudo-model is not a model at all; it delegates the lane's own
+    decision and publishes a sentinel price.
+    """
+    lane = Lane(name="t", must=["tools"])
+    batch = _model("vendor/model:batch", prompt=0.5, completion=2.5)
+    pseudo = _model("openrouter/auto", prompt=0.0, completion=0.0)
+    sentinel = _model("vendor/negative", prompt=-1.0, completion=-1.0)
+    normal = _model("vendor/model", prompt=1.0, completion=5.0)
+
+    result = resolve_lane(lane, [batch, pseudo, sentinel, normal])
+
+    assert [c.id for c in result.candidates] == ["vendor/model"]
+    reasons = {r.model_id: r.reason for r in result.rejections}
+    assert "batch tier excluded" in reasons["vendor/model:batch"]
+    assert "router pseudo-model excluded" in reasons["openrouter/auto"]
+    assert "non-positive cost per turn" in reasons["vendor/negative"]
 
 
 def test_preview_builds_are_excluded_from_user_facing_lanes():
-    lane = Lane(name="t", must=["tools"], prefer="cost")
+    lane = Lane(name="t", must=["tools"])
     result = resolve_lane(lane, [_model("vendor/gemini-3-pro-preview", prompt=0.1, completion=0.2)])
     assert result.candidates == ()
     assert any("preview" in r.reason for r in result.rejections)
@@ -144,7 +180,7 @@ def test_a_model_with_no_published_index_cannot_clear_a_floor():
 def test_ranking_uses_cost_per_turn_not_the_sticker_input_price():
     """Completion is priced several times input; ranking on prompt alone flips picks."""
     lane = Lane(
-        name="t", must=["tools"], prefer="cost",
+        name="t", must=["tools"],
         expected_input_tokens=1_000, expected_output_tokens=2_000,
     )
     cheap_prompt_pricey_output = _model("vendor/trap", prompt=0.5, completion=30.0)
@@ -158,7 +194,7 @@ def test_ranking_uses_cost_per_turn_not_the_sticker_input_price():
 
 def test_cache_reads_are_priced_when_a_prefix_is_replayed():
     lane = Lane(
-        name="t", must=["tools"], prefer="cost",
+        name="t", must=["tools"],
         expected_input_tokens=10_000, expected_output_tokens=100,
         expected_cached_input_tokens=9_000,
     )
@@ -171,12 +207,12 @@ def test_cache_reads_are_priced_when_a_prefix_is_replayed():
     assert result.best.id == "vendor/cached", "a cached premium model can beat an uncached cheap one"
 
 
-def test_quality_preference_orders_by_index_then_cost():
-    lane = Lane(name="t", must=["tools"], min_intelligence=50, prefer="quality")
+def test_tier_best_orders_by_margin_then_cost():
+    lane = Lane(name="t", must=["tools"], min_intelligence=50)
     good = _model("vendor/good", intelligence=60, prompt=0.1)
     better = _model("vendor/better", intelligence=90, prompt=9.0)
 
-    result = resolve_lane(lane, [good, better])
+    result = resolve_lane(lane, [good, better], tier="best")
 
     assert [c.id for c in result.candidates][0] == "vendor/better"
 
@@ -185,7 +221,7 @@ def test_quality_preference_orders_by_index_then_cost():
 
 def test_benched_models_are_removed_from_the_candidate_set():
     """Availability is observed, not published: a timing-out model is worthless."""
-    lane = Lane(name="t", must=["tools"], prefer="cost")
+    lane = Lane(name="t", must=["tools"])
     flaky = _model("vendor/flaky", prompt=0.1, completion=0.2)
     steady = _model("vendor/steady", prompt=1.0, completion=4.0)
 
@@ -197,7 +233,7 @@ def test_benched_models_are_removed_from_the_candidate_set():
 
 def test_resolution_returns_a_shortlist_so_retries_fail_sideways():
     """A single pinned fallback turns a bad ten minutes into a frontier-priced turn."""
-    lane = Lane(name="t", must=["tools"], prefer="cost", shortlist_size=3)
+    lane = Lane(name="t", must=["tools"], shortlist_size=3)
     catalog = [_model(f"vendor/m{i}", prompt=float(i + 1)) for i in range(5)]
 
     result = resolve_lane(lane, catalog)
@@ -208,7 +244,7 @@ def test_resolution_returns_a_shortlist_so_retries_fail_sideways():
 
 def test_resolution_explains_itself_for_the_operator():
     """Automatic selection without a visible decision is unauditable."""
-    lane = Lane(name="guide", must=["tools"], prefer="cost")
+    lane = Lane(name="guide", must=["tools"])
     result = resolve_lane(lane, [_model("vendor/pick")])
 
     assert "vendor/pick" in result.explain()
@@ -233,10 +269,11 @@ def test_default_lanes_never_name_a_model():
             assert vendor not in blob, f"lane {lane.name} names a model ({vendor})"
 
 
-def test_default_lanes_require_tools_and_exclude_free_tiers():
+def test_default_lanes_require_tools_and_carry_no_objective():
+    """A lane states the requirement. The tier states the objective, per call."""
     for lane in DEFAULT_LANES:
         assert "tools" in lane.must, f"lane {lane.name} must filter on tool support"
-        assert lane.allow_free_tier is False, f"lane {lane.name} must not default to free tiers"
+    assert "prefer" not in Lane.model_fields, "the objective must not live in the lane record"
 
 
 def test_lanes_load_from_a_deployment_bundle(tmp_path: Path):
@@ -305,6 +342,101 @@ async def test_catalog_fetch_failure_degrades_to_the_pinned_fallback(tmp_path: P
     assert [m.id for m in models] == [m.id for m in PINNED_FALLBACK]
 
 
+def _cache_file(path: Path, *, age_seconds: float, model_id: str = "vendor/stale") -> Path:
+    import json
+    import time
+
+    path.write_text(
+        json.dumps(
+            {
+                "fetched_at": time.time() - age_seconds,
+                "catalog": {
+                    "data": [
+                        {
+                            "id": model_id,
+                            "context_length": 1_000_000,
+                            "pricing": {"prompt": "0.000001", "completion": "0.000005"},
+                            "supported_parameters": ["tools", "tool_choice"],
+                            "benchmarks": {"artificial_analysis": {"intelligence_index": 50.0}},
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_staleness_is_bounded_by_a_ttl_and_a_separate_hard_max_age(tmp_path: Path):
+    """Two bounds, two questions, previously both answered by no check at all.
+
+    The TTL says when a stored catalog stops being PREFERRED. The hard max age
+    says when it stops being USABLE. The fetch-failure path used to pass a TTL
+    of ten years, which is a shape test wearing an age test's clothes: a shape
+    test cannot tell a price from an hour ago from a price from last month, so a
+    promotional price that lapsed weeks ago could keep winning a cost-ranked
+    lane while the reason string still said "cheapest of N".
+    """
+    from gestaltworkframe.core.model_catalog import (
+        DEFAULT_TTL_SECONDS,
+        HARD_MAX_AGE_SECONDS,
+        load_cached_catalog_sync,
+    )
+
+    assert HARD_MAX_AGE_SECONDS > DEFAULT_TTL_SECONDS
+
+    cache = tmp_path / "catalog.json"
+
+    # Fresh: used.
+    _cache_file(cache, age_seconds=60)
+    assert [m.id for m in load_cached_catalog_sync(cache_path=cache)] == ["vendor/stale"]
+
+    # Past the TTL, inside the hard cap: still used, and its age is logged.
+    _cache_file(cache, age_seconds=DEFAULT_TTL_SECONDS + 3600)
+    assert [m.id for m in load_cached_catalog_sync(cache_path=cache)] == ["vendor/stale"]
+
+    # Past the hard cap: refused, and the pinned fallback is used instead.
+    _cache_file(cache, age_seconds=HARD_MAX_AGE_SECONDS + 3600)
+    assert [m.id for m in load_cached_catalog_sync(cache_path=cache)] == [
+        m.id for m in PINNED_FALLBACK
+    ]
+
+
+def test_a_missing_or_unparseable_timestamp_counts_as_infinitely_old(tmp_path: Path):
+    """A stale record must not be able to look exactly like a fresh one."""
+    import json
+
+    from gestaltworkframe.core.model_catalog import cache_age_seconds, load_cached_catalog_sync
+
+    cache = tmp_path / "catalog.json"
+    cache.write_text(json.dumps({"catalog": {"data": [{"id": "vendor/x"}]}}), encoding="utf-8")
+
+    assert cache_age_seconds(cache) == float("inf")
+    assert [m.id for m in load_cached_catalog_sync(cache_path=cache)] == [
+        m.id for m in PINNED_FALLBACK
+    ]
+
+
+def test_the_pinned_fallback_stays_a_small_dated_verbatim_capture(tmp_path: Path):
+    """It is a live selector, not inert insurance, so it must not grow.
+
+    A pinned rung is returned whenever the catalog is unreachable and is handed
+    out as an escalation target, so a "best models" table here becomes a
+    permanent shadow routing policy. Three entries, real published indices,
+    dated capture annotation.
+    """
+    from gestaltworkframe.core import model_catalog
+
+    assert len(PINNED_FALLBACK) == 3
+    source = Path(model_catalog.__file__).read_text(encoding="utf-8")
+    assert "2026-07-25" in source, "the dated capture annotation must travel with the values"
+    for model in PINNED_FALLBACK:
+        assert model.intelligence_index is not None
+        assert model.agentic_index is not None
+        assert model.prompt_price > 0 and model.completion_price > 0
+
+
 @pytest.mark.asyncio
 async def test_catalog_is_cached_and_reused(tmp_path: Path):
     calls = {"n": 0}
@@ -342,36 +474,252 @@ def test_every_default_lane_is_satisfiable_by_the_pinned_fallback():
 
 # ---- vendor preference ---------------------------------------------------
 
-def test_vendor_preference_reorders_but_never_admits_an_ineligible_model():
-    """A brand commitment is a preference among the qualified, not a filter.
+def test_vendor_preference_is_a_tie_break_key_and_never_a_selector():
+    """It sits below every measured axis and below cost, above the id only.
 
-    EGI sells Claude-based engineering, so its customer-facing lanes must lead
-    with Anthropic. That cannot become a back door: a preferred vendor that
-    fails a hard requirement is still rejected.
+    A stored name preference is stale-prone in proportion to its AUTHORITY. As
+    the first sort key it WAS the selector, which is the "resolve to a
+    shortlist, then order it by a stored human preference" mechanism the
+    doctrine records as built and deleted: a better model can ship and never be
+    chosen, and a listed model that has gone bad still wins.
     """
-    lane = Lane(name="t", must=["tools"], prefer="cost", prefer_vendors=["anthropic/"])
+    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
     cheaper_other = _model("vendor/cheap", prompt=0.1, completion=0.2)
-    preferred = _model("anthropic/claude-x", prompt=3.0, completion=15.0)
+    preferred_but_dearer = _model("anthropic/claude-x", prompt=3.0, completion=15.0)
+
+    result = resolve_lane(lane, [cheaper_other, preferred_but_dearer], tier="cheap")
+
+    assert [c.id for c in result.candidates] == ["vendor/cheap", "anthropic/claude-x"], (
+        "a measured axis must outrank the stored vendor preference"
+    )
+
+
+def test_vendor_preference_separates_models_the_measured_axes_call_equal():
+    """Where it CAN act: an exact tie, which is where taste is what is left."""
+    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
+    same_price_a = _model("aaa/model", prompt=1.0, completion=5.0)
+    same_price_b = _model("anthropic/claude-x", prompt=1.0, completion=5.0)
+
+    result = resolve_lane(lane, [same_price_a, same_price_b], tier="cheap")
+
+    assert [c.id for c in result.candidates] == ["anthropic/claude-x", "aaa/model"]
+
+
+def test_vendor_preference_never_admits_an_ineligible_model():
+    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
     preferred_but_broken = _model("anthropic/no-tools", prompt=0.01, completion=0.02, params=frozenset())
+    ok = _model("vendor/ok", prompt=1.0, completion=4.0)
 
-    result = resolve_lane(lane, [cheaper_other, preferred, preferred_but_broken])
+    result = resolve_lane(lane, [preferred_but_broken, ok])
 
-    assert [c.id for c in result.candidates] == ["anthropic/claude-x", "vendor/cheap"]
+    assert [c.id for c in result.candidates] == ["vendor/ok"]
     assert any("missing required parameter" in r.reason for r in result.rejections)
 
 
 def test_lane_still_resolves_when_no_preferred_vendor_qualifies():
     """The preference must not make a lane unroutable."""
-    lane = Lane(name="t", must=["tools"], prefer="cost", prefer_vendors=["anthropic/"])
+    lane = Lane(name="t", must=["tools"], prefer_vendors=["anthropic/"])
     result = resolve_lane(lane, [_model("vendor/only-option", prompt=1.0, completion=4.0)])
     assert [c.id for c in result.candidates] == ["vendor/only-option"]
 
 
 def test_no_vendor_preference_leaves_ordering_purely_objective():
-    lane = Lane(name="t", must=["tools"], prefer="cost")
+    lane = Lane(name="t", must=["tools"])
     cheap = _model("vendor/cheap", prompt=0.1, completion=0.2)
     pricey = _model("anthropic/claude-x", prompt=9.0, completion=40.0)
 
-    result = resolve_lane(lane, [pricey, cheap])
+    result = resolve_lane(lane, [pricey, cheap], tier="cheap")
 
     assert [c.id for c in result.candidates][0] == "vendor/cheap"
+
+
+def test_every_comparator_is_a_total_order_ending_in_the_model_id():
+    """Otherwise the CATALOG'S ARRAY POSITION decides the lane.
+
+    Exact ties are structural, not hypothetical: vendors price whole families
+    the same on purpose. Without the id as the final key, one upstream
+    reordering flips the pick with no code change and no log line.
+    """
+    lane = Lane(name="t", must=["tools"])
+    twins = [
+        _model("vendor/zzz", prompt=1.0, completion=5.0),
+        _model("vendor/aaa", prompt=1.0, completion=5.0),
+    ]
+
+    for tier in ("best", "auto", "fast", "cheap"):
+        forward = resolve_lane(lane, twins, tier=tier)
+        backward = resolve_lane(lane, list(reversed(twins)), tier=tier)
+        assert [c.id for c in forward.candidates] == [c.id for c in backward.candidates] == [
+            "vendor/aaa",
+            "vendor/zzz",
+        ], tier
+
+
+# ---- the tier axis -------------------------------------------------------
+
+def test_the_same_lane_resolves_differently_at_each_tier():
+    """Lane and tier are orthogonal: one requirement, four objectives."""
+    lane = Lane(
+        name="t",
+        must=["tools"],
+        min_intelligence=40,
+        expected_input_tokens=1_000,
+        expected_output_tokens=1_000,
+    )
+    # Cheapest thing that clears the bar, by a hair.
+    squeaker = _model("vendor/squeaker", prompt=0.01, completion=0.02, intelligence=40.3)
+    # Solid mid-range.
+    middle = _model("vendor/middle", prompt=1.0, completion=5.0, intelligence=55)
+    # Top of the catalog, priced like it.
+    frontier = _model("vendor/frontier", prompt=5.0, completion=25.0, intelligence=75)
+    catalog = [squeaker, middle, frontier]
+
+    best = resolve_lane(lane, catalog, tier="best")
+    cheap = resolve_lane(lane, catalog, tier="cheap")
+    auto = resolve_lane(lane, catalog, tier="auto")
+
+    assert best.best is not None and best.best.id == "vendor/frontier"
+    assert cheap.best is not None and cheap.best.id == "vendor/squeaker"
+    # The gate is the point: an ungated margin-per-dollar ratio would take the
+    # squeaker, which is "barely adequate and nearly free" -- the degenerate
+    # optimum. It must not survive the gate at all.
+    assert auto.best is not None and auto.best.id != "vendor/squeaker"
+    assert any(
+        r.model_id == "vendor/squeaker" and "share of best available margin" in r.reason
+        for r in auto.rejections
+    )
+
+
+def test_auto_takes_margin_per_dollar_among_what_survives_the_gate():
+    lane = Lane(
+        name="t",
+        must=["tools"],
+        min_intelligence=40,
+        expected_input_tokens=1_000,
+        expected_output_tokens=1_000,
+    )
+    # Both well clear of the gate; the cheaper one wins on value per dollar.
+    value = _model("vendor/value", prompt=1.0, completion=5.0, intelligence=70)
+    frontier = _model("vendor/frontier", prompt=5.0, completion=25.0, intelligence=75)
+
+    auto = resolve_lane(lane, [value, frontier], tier="auto")
+    best = resolve_lane(lane, [value, frontier], tier="best")
+
+    assert auto.best is not None and auto.best.id == "vendor/value"
+    assert best.best is not None and best.best.id == "vendor/frontier"
+
+
+def test_fast_never_pays_a_lot_to_save_a_little_time():
+    """Two measured models: one 3x faster and 20x dearer. `fast` takes the slower."""
+    lane = Lane(
+        name="t",
+        must=["tools"],
+        min_intelligence=40,
+        expected_input_tokens=1_000,
+        expected_output_tokens=1_000,
+    )
+    quick_and_dear = _model("vendor/quick", prompt=20.0, completion=100.0, intelligence=60)
+    slow_and_cheap = _model("vendor/slow", prompt=1.0, completion=5.0, intelligence=60)
+
+    result = resolve_lane(
+        lane,
+        [quick_and_dear, slow_and_cheap],
+        tier="fast",
+        observed_seconds={"vendor/quick": 2.0, "vendor/slow": 6.0},
+    )
+
+    assert result.best is not None and result.best.id == "vendor/slow"
+
+
+def test_an_unmeasured_model_sorts_behind_a_measured_one_but_is_never_excluded():
+    """A model that is never picked can never earn its first measurement."""
+    lane = Lane(name="t", must=["tools"], min_intelligence=40)
+    measured = _model("vendor/measured", prompt=9.0, completion=40.0, intelligence=60)
+    unmeasured = _model("vendor/unmeasured", prompt=0.1, completion=0.2, intelligence=60)
+
+    result = resolve_lane(
+        lane, [unmeasured, measured], tier="fast", observed_seconds={"vendor/measured": 1.0}
+    )
+
+    assert [c.id for c in result.candidates] == ["vendor/measured", "vendor/unmeasured"]
+
+
+def test_fast_says_so_when_it_has_no_latency_to_rank_on():
+    """Never imply a measurement that does not exist."""
+    lane = Lane(name="t", must=["tools"], min_intelligence=40)
+    result = resolve_lane(lane, [_model("vendor/a", intelligence=60)], tier="fast")
+    assert "no latency observed" in result.explain()
+
+
+def test_cheap_is_never_a_hidden_default():
+    """`auto` is the default. `cheap` is a claim somebody owns."""
+    from gestaltworkframe.core.model_resolver import DEFAULT_TIER
+
+    assert DEFAULT_TIER == "auto"
+    lane = Lane(name="t", must=["tools"], min_intelligence=40)
+    assert resolve_lane(lane, [_model("vendor/a", intelligence=60)]).tier == "auto"
+
+
+# ---- margin --------------------------------------------------------------
+
+def test_margin_is_headroom_over_the_bar_not_the_mean_of_raw_indices():
+    """The two metrics disagree, and doctrine says which one wins.
+
+    Capability below the bar is worth nothing, because the model is excluded
+    outright; only the surplus above it can help this turn. Here the two
+    metrics order the same catalog differently:
+
+        lane floors: intelligence 50, agentic 40
+        alpha: 90 / 42 -> mean 66.0, headroom 40 + 2 = 42
+        beta:  55 / 75 -> mean 65.0, headroom  5 + 35 = 40
+        gamma: 60 / 70 -> mean 65.0, headroom 10 + 30 = 40
+
+    Mean-of-indices puts alpha first too, but the OLD code averaged only the
+    floored axes and would have made beta and gamma tie with alpha's 66 close
+    behind; the point of the assertion is that the winner's reported number is
+    the headroom (42), not any average of raw indices.
+    """
+    lane = Lane(name="t", must=["tools"], min_intelligence=50, min_agentic=40)
+    # mean(90, 42) = 66.0 ; headroom = 40 + 2 = 42
+    alpha = _model("vendor/alpha", intelligence=90, agentic=42, coding=None)
+    # mean(55, 75) = 65.0 ; headroom = 5 + 35 = 40
+    beta = _model("vendor/beta", intelligence=55, agentic=75, coding=None)
+    # mean(60, 70) = 65.0 ; headroom = 10 + 30 = 40  -- and cheaper than alpha
+    gamma = _model("vendor/gamma", intelligence=60, agentic=70, coding=None)
+
+    assert (90 + 42) / 2 > (55 + 75) / 2, "alpha has the higher mean"
+    result = resolve_lane(lane, [beta, gamma, alpha], tier="best")
+
+    assert result.best is not None and result.best.id == "vendor/alpha"
+    assert result.best.margin == 42.0
+
+
+def test_margin_ignores_an_axis_the_lane_declared_no_floor_on():
+    """Averaging or summing an undeclared axis dilutes a genuine surplus."""
+    lane = Lane(name="t", must=["tools"], min_intelligence=50)
+    # Identical intelligence headroom; wildly different coding index.
+    plain = _model("vendor/plain", intelligence=60, coding=10, agentic=10)
+    coder = _model("vendor/coder", intelligence=60, coding=95, agentic=95)
+
+    result = resolve_lane(lane, [plain, coder], tier="best")
+
+    assert {c.margin for c in result.candidates} == {10.0}
+
+
+# ---- the decision log ----------------------------------------------------
+
+def test_the_reason_string_names_the_tier_and_objective_actually_used():
+    """A wrong route gets caught by a bad answer; a wrong REPORT does not."""
+    lane = Lane(name="guide", must=["tools"], min_intelligence=40)
+    catalog = [
+        _model("vendor/cheap", prompt=0.1, completion=0.5, intelligence=45),
+        _model("vendor/strong", prompt=5.0, completion=25.0, intelligence=75),
+    ]
+
+    best = resolve_lane(lane, catalog, tier="best").explain()
+    cheap = resolve_lane(lane, catalog, tier="cheap").explain()
+
+    assert "tier=best" in best and "maximum margin" in best
+    assert "tier=cheap" in cheap and "lowest cost above the bar" in cheap
+    assert best != cheap
+    assert "vendor/strong" in best and "vendor/cheap" in cheap

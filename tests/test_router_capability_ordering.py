@@ -69,10 +69,29 @@ def router() -> LLMRouter:
     return LLMRouter(primary=None)
 
 
-def test_disabled_by_default_leaves_static_order_untouched(router, monkeypatch):
-    """A deployment opts in; it does not get reordered behind its back."""
+def test_capability_routing_is_the_default_path(router, monkeypatch):
+    """Correct behaviour that ships disabled is not behaviour, it is a comment.
+
+    This flag shipped off and was set in no .env, no .env.example, no compose
+    file and no deployment bundle, which made the resolver dead code and left
+    the live ordering to the sum of hand-typed routing_priority integers in
+    llm/profiles.json -- a shortlist ranked by a stored human preference order.
+    """
     monkeypatch.delenv(CAPABILITY_ROUTING_ENV, raising=False)
-    assert router._capability_routing_enabled() is False
+    assert router._capability_routing_enabled() is True
+
+
+def test_the_flag_survives_as_an_escape_hatch_to_the_legacy_ordering(router, monkeypatch):
+    """One variable back to priority ordering, for a mis-tuned lane, no redeploy."""
+    for raw in ("0", "false", "no", "off"):
+        monkeypatch.setenv(CAPABILITY_ROUTING_ENV, raw)
+        assert router._capability_routing_enabled() is False, raw
+    for raw in ("1", "true", "yes", "on"):
+        monkeypatch.setenv(CAPABILITY_ROUTING_ENV, raw)
+        assert router._capability_routing_enabled() is True, raw
+    # Nonsense is not a silent "off".
+    monkeypatch.setenv(CAPABILITY_ROUTING_ENV, "maybe")
+    assert router._capability_routing_enabled() is True
 
 
 def test_gateway_prefix_is_stripped_to_reach_the_catalog_id(router, monkeypatch):

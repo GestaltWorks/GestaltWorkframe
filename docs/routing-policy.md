@@ -94,22 +94,70 @@ days behind a healthy-looking sibling route.
 and resolving the model at runtime. Three modules implement that:
 
 - `core/model_catalog.py` — OpenRouter's public `GET /api/v1/models`, cached on
-  disk for 24h, with a pinned fallback. `fetch_catalog()` is async and belongs
-  to a refresh task; `load_cached_catalog_sync()` is what route selection uses,
-  and it never touches the network on a user turn.
+  disk with a 24h TTL and a **separate 72h hard max age**, with a pinned
+  fallback. The TTL says when a stored catalog stops being *preferred*; the hard
+  cap says when it stops being *usable*, and past it the pinned fallback is used
+  instead. A missing or unparseable timestamp counts as infinitely old.
+  `fetch_catalog()` is async and belongs to a refresh task;
+  `load_cached_catalog_sync()` is what route selection uses, and it never
+  touches the network on a user turn.
 - `core/model_lanes.py` — a lane is a policy record: required
-  `supported_parameters`, context and price ceilings, quality floors, the
-  expected turn shape, and a cost-or-quality preference. Lanes never name a
-  model. A deployment overrides them in `deployments/<id>/lanes.yaml`.
-- `core/model_resolver.py` — filter → floor → rank → shortlist, returning the
-  ordered candidates and the reason every other model lost.
+  `supported_parameters`, context and price ceilings, quality floors, and the
+  expected turn shape. Lanes never name a model and carry **no objective**: the
+  tier is passed per call. A deployment overrides them in
+  `deployments/<id>/lanes.yaml`.
+- `core/model_resolver.py` — filter → floor → cost → gate → rank → shortlist,
+  returning the ordered candidates and the reason every other model lost.
 
-### Turning it on
+### The two axes
 
-Off by default. Set `ENABLE_CAPABILITY_ROUTING=true` once a deployment's lanes
-are tuned. When enabled, the *order of cloud routes* comes from resolving the
-turn's lane instead of from `routing_priority`; provider construction, health
-checks, spend gates, and concurrency are untouched.
+The **lane** states the requirement. The **tier** states the objective among the
+models that already qualify, and it is passed per call, never welded into the
+lane record. Four tiers, all applying the same filters and floors first:
+
+| tier | objective |
+| --- | --- |
+| `best` | maximum margin; cost breaks ties. The cost ceiling is emergent, which is why no dollar constant appears anywhere in the implementation. |
+| `auto` | maximum margin per dollar, above the margin-share gate. **The default.** |
+| `fast` | minimum seconds × cost, above the same gate. Speed is observed, never looked up; with nothing measured it falls back to lowest cost and says so in the reason string rather than implying a measurement it does not have. |
+| `cheap` | lowest cost above the bar, margin breaks ties. A declaration somebody owns, never a hidden default: as a default it makes the floor the target. |
+
+**Margin** is `max(0, index - floor)` summed over the axes the lane declares.
+Headroom over the bar, not the mean of raw indices: capability below the floor
+is worth nothing, because the model is excluded outright.
+
+The **margin-share gate** (`MARGIN_SHARE_GATE`, 0.35, calibrated 2026-08-01)
+runs before the ratio on `auto` and `fast`. A pure margin-per-dollar ratio has a
+degenerate optimum where "barely adequate and nearly free" wins by construction.
+
+An operator's `routing_strategy` selects the tier: `prefer_cloud_quality` →
+`best`, everything else → `auto`. `cheap` is deliberately unreachable from a
+strategy.
+
+Excluded before price, unliftably: `:free` (data handling — those endpoints
+generally train on submitted prompts), `:batch` (delivery contract — same model,
+same indices, half the price, hours later), and router pseudo-models such as
+`openrouter/auto` (they delegate the lane's own decision and publish sentinel
+prices). Any computed turn cost that is not greater than zero is rejected
+independently. Preview builds are the only exclusion a lane may lift.
+
+### Turning it off
+
+**On by default since 2026-08-01.** It previously shipped off and was set in no
+`.env`, no `.env.example`, no compose file and no deployment bundle, which made
+the resolver dead code and left live ordering to the sum of hand-typed
+`routing_priority` integers — a shortlist ranked by a stored human preference
+order. Correct behaviour that ships disabled is not behaviour.
+
+`ENABLE_CAPABILITY_ROUTING=0` is the escape hatch back to the legacy priority
+ordering, for a mis-tuned lane, without a redeploy.
+
+When enabled, the lane's ranking *redeals the cloud family's own priority
+numbers* in lane order. Which cloud route gets the top anchor is the lane's
+answer; the numbers themselves are unchanged, so the calibration between the
+cloud family and local routes (the `best_value` lean, the task-fit weights)
+keeps working. Task fit, the tool-calling requirement, runtime health, provider
+construction, spend gates and concurrency are untouched.
 
 `MODEL_GATEWAY_PREFIX` (default `openrouter/`) maps a gateway alias to the
 catalog id. Transport mapping is configuration; a table asserting which model

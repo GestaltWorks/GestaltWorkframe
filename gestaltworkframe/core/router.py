@@ -39,13 +39,38 @@ ROUTING_STRATEGIES = {"best_value", "prefer_local", "prefer_cloud_quality", "loc
 # families entirely.
 # Capability-based routing (docs/standards/model-routing-policy.md).
 #
-# When enabled, the ORDER of cloud routes comes from resolving the turn's lane
-# against the live model catalog, instead of the hand-assigned routing_priority
-# integers in llm/profiles.json. Everything else about a route — provider
-# construction, health, spend gates, concurrency — is unchanged.
+# The ORDER of cloud routes comes from resolving the turn's lane against the
+# live model catalog, instead of the hand-assigned routing_priority integers in
+# llm/profiles.json. Everything else about a route — provider construction,
+# health, spend gates, concurrency — is unchanged.
 #
-# Off by default: a deployment opts in once its lanes are tuned.
+# ON by default since 2026-08-01. It shipped off, set in no .env, no
+# .env.example, no compose file and no deployment bundle, which meant the
+# correct resolver was dead code and the live ordering was the sum of
+# hand-typed priority integers: a shortlist ranked by a stored human preference
+# order, which is the mechanism the doctrine records as built and deleted.
+# Correct behaviour that ships disabled is not behaviour, it is a comment.
+#
+# The flag survives as an ESCAPE HATCH to the legacy priority ordering, so an
+# operator whose lanes are mis-tuned has a one-variable way back without a
+# redeploy. Set ENABLE_CAPABILITY_ROUTING=0 to get it.
 CAPABILITY_ROUTING_ENV = "ENABLE_CAPABILITY_ROUTING"
+CAPABILITY_ROUTING_DEFAULT = True
+
+# Which OBJECTIVE an operator's routing strategy declares, among the models that
+# already qualify for the lane. The lane states the requirement; the tier states
+# the objective; the two never collapse onto one axis. `auto` is the default and
+# `cheap` is deliberately unreachable from a strategy: it is a claim somebody
+# owns ("this work is commodity") on a lane whose bar is deliberately set at the
+# lowest reasonable place, never a hidden default that makes the floor the
+# target.
+STRATEGY_TIERS = {
+    "best_value": "auto",
+    "prefer_local": "auto",
+    "prefer_cloud_quality": "best",
+    "local_only": "auto",
+    "cloud_only": "auto",
+}
 
 # Transport mapping is configuration, not judgement: the gateway prefixes its
 # aliases (`openrouter/anthropic/claude-haiku-4.5`) while the catalog keys the
@@ -68,6 +93,25 @@ TASK_LANES = {
     "basic_rewst_help": "lookup",
 }
 DEFAULT_LANE = "guide"
+
+
+# `:free` aggregator tiers are excluded as a DATA-HANDLING rule, not as a cost
+# preference. Those endpoints generally train on submitted prompts, so routing a
+# user's turn to one hands that turn to a third party as training data. Per
+# docs/standards/model-routing-policy.md the exclusion is UNLIFTABLE: no env var,
+# no operator setting and no per-deployment config key may re-enable it, because
+# no setting makes a training corpus forget. "Free" in this shop means local
+# inference on our own hardware; it never means an aggregator's free tier.
+#
+# The check runs on the DISPATCH id, which is the only id anything actually
+# sends, and it runs before every strategy, policy and enablement check.
+FREE_TIER_SEGMENTS = frozenset({"free", "free-tier"})
+
+
+def is_free_tier_model(model_id: str) -> bool:
+    """True when a dispatch id names an aggregator `:free` endpoint."""
+    lowered = (model_id or "").strip().lower()
+    return any(segment in FREE_TIER_SEGMENTS for segment in lowered.split(":")[1:])
 
 
 ROUTE_COST_ADJUSTMENTS = {
@@ -105,13 +149,26 @@ class ProviderRoute:
 
     @property
     def is_cloud(self) -> bool:
-        # "free" tier routes (e.g. OpenRouter free models) are treated as non-cloud:
-        # they do not require ENABLE_CLOUD_SPILLOVER and are not subject to USD caps.
-        return self.cost_tier in {"low_cost", "premium"}
+        # "Cloud" means the prompt leaves this box, which is a data-handling
+        # question and not a billing one. This used to read
+        # `cost_tier in {"low_cost", "premium"}`, so a `cost_tier: "free"`
+        # OpenRouter route counted as NOT cloud: it skipped cloud_allowed, it
+        # skipped the response_policy check, and a turn declared
+        # response_policy="local_only" could be served over the public internet
+        # by a third party. Only local inference on our own hardware is not
+        # cloud. Billing exposure is a separate question, answered by
+        # `is_metered`.
+        return self.cost_tier != "local"
 
     @property
     def is_metered(self) -> bool:
+        """Does a turn on this route cost money? Spend caps key off this."""
         return self.cost_tier in {"low_cost", "premium"}
+
+    @property
+    def is_free_tier(self) -> bool:
+        """An aggregator `:free` endpoint. Never selectable; see the module note."""
+        return is_free_tier_model(self.model)
 
     @property
     def supports_tools(self) -> bool:
@@ -376,6 +433,10 @@ class LLMRouter:
         response_policy: str | None,
         enabled_cost_tiers: set[str] | None = None,
     ) -> bool:
+        # Unliftable, and first: no strategy, policy or operator override may
+        # re-admit a `:free` endpoint.
+        if route.is_free_tier:
+            return False
         if route.deployment_status == "disabled":
             return False
         if not route.configured or route.provider is None:
@@ -400,6 +461,8 @@ class LLMRouter:
         response_policy: str | None,
         enabled_cost_tiers: set[str] | None = None,
     ) -> str:
+        if route.is_free_tier:
+            return "free_tier_excluded"
         if route.deployment_status == "disabled":
             return "deployment_disabled"
         if not route.configured:
@@ -462,7 +525,20 @@ class LLMRouter:
 
     @staticmethod
     def _capability_routing_enabled() -> bool:
-        return os.getenv(CAPABILITY_ROUTING_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+        raw = os.getenv(CAPABILITY_ROUTING_ENV, "").strip().lower()
+        if not raw:
+            return CAPABILITY_ROUTING_DEFAULT
+        if raw in {"1", "true", "yes", "on"}:
+            return True
+        if raw in {"0", "false", "no", "off"}:
+            return False
+        logger.warning(
+            "%s=%r is not a boolean; using the default (%s)",
+            CAPABILITY_ROUTING_ENV,
+            raw,
+            CAPABILITY_ROUTING_DEFAULT,
+        )
+        return CAPABILITY_ROUTING_DEFAULT
 
     def _transports(self):
         return load_transport_map(self._deployment_bundle_dir())
@@ -497,6 +573,7 @@ class LLMRouter:
         cloud_routes: list[ProviderRoute],
         task: str | None,
         diagnostics: dict[str, Any],
+        strategy: str | None = None,
     ) -> list[ProviderRoute]:
         """Order cloud routes by resolving the turn's lane against the catalog.
 
@@ -512,6 +589,7 @@ class LLMRouter:
             return cloud_routes
 
         lane = self._lane_for(task)
+        tier = STRATEGY_TIERS.get(self._clean_routing_strategy(strategy), "auto")
         catalog = load_cached_catalog_sync()
         # Availability is observed, not published. Reuse the breaker the router
         # already maintains rather than inventing a second failure signal.
@@ -521,7 +599,7 @@ class LLMRouter:
             if self._route_key(route) in self._route_breaker_open
             or self._route_error_count.get(self._route_key(route), 0) >= self.error_threshold
         }
-        resolution = resolve_lane(lane, catalog, benched=benched)
+        resolution = resolve_lane(lane, catalog, tier=tier, benched=benched)
 
         rank = {candidate.id: position for position, candidate in enumerate(resolution.candidates)}
         known = {model.id for model in catalog}
@@ -535,6 +613,8 @@ class LLMRouter:
         cleared.sort(key=lambda r: (rank[self._catalog_id(r.model)], transports.transport_kind(r.model)))
 
         diagnostics["capability_lane"] = lane.name
+        diagnostics["capability_tier"] = resolution.tier
+        diagnostics["capability_objective"] = resolution.objective
         diagnostics["capability_choice"] = resolution.explain()
         diagnostics["capability_rejected"] = [
             f"{rejection.model_id}: {rejection.reason}"
@@ -608,28 +688,45 @@ class LLMRouter:
                 routes.append(route)
         local = [route for route in routes if not route.is_cloud]
         cloud = [route for route in routes if route.is_cloud]
-        capability_ordered = False
+        # The lane's ranking SUBSTITUTES for the hand-assigned routing_priority
+        # on cloud routes; it does not replace the whole scoring path. Task fit,
+        # the tool-calling requirement, runtime health and the direct-provider
+        # headroom bonus are router concerns and still apply. What stops
+        # deciding is the priority integer typed into llm/profiles.json, which
+        # is the "shortlist ranked by a stored human preference order" the
+        # doctrine records as deleted.
+        capability_priority: dict[str, int] = {}
         if self._capability_routing_enabled():
-            reordered = self._capability_order(cloud, task, diagnostics)
-            capability_ordered = reordered is not cloud
+            reordered = self._capability_order(cloud, task, diagnostics, strategy)
+            if reordered is not cloud:
+                # Redeal the cloud family's OWN priority numbers in lane order.
+                # Which cloud route gets the top anchor is now the lane's answer
+                # rather than whichever integer somebody typed highest, while the
+                # numbers themselves are unchanged, so the calibration between
+                # the cloud family and local routes (the best_value lean, the
+                # task-fit weights) keeps working exactly as it did. Inventing a
+                # fresh scale here silently overpowered that lean and sent
+                # routine, task-less turns to cloud.
+                anchors = sorted((route.routing_priority for route in cloud), reverse=True)
+                capability_priority = {
+                    route.name: anchors[position] if position < len(anchors) else 0
+                    for position, route in enumerate(reordered)
+                }
+                # Routes the lane dropped are gone; the survivors are listed in
+                # lane order so a score tie falls through to the lane, never to
+                # however the profile file happened to be written.
+                routes = local + list(reordered)
             cloud = reordered
-        def _rank_cloud(candidates: list[ProviderRoute]) -> list[ProviderRoute]:
-            # Capability ordering already ranked these against the lane; a
-            # re-sort on routing_priority would throw that away.
-            if capability_ordered:
-                return candidates
-            return sorted(candidates, key=lambda route: self._route_score(route, task, strategy), reverse=True)
+
+        def _score(route: ProviderRoute) -> int:
+            return self._route_score(route, task, strategy, capability_priority)
 
         if strategy == "prefer_local":
-            ordered = sorted(local, key=lambda route: self._route_score(route, task, strategy), reverse=True) + _rank_cloud(cloud)
+            ordered = sorted(local, key=_score, reverse=True) + sorted(cloud, key=_score, reverse=True)
         elif strategy == "prefer_cloud_quality":
-            ordered = _rank_cloud(cloud) + sorted(local, key=lambda route: self._route_score(route, task, strategy), reverse=True)
-        elif capability_ordered:
-            # Mixed ordering keeps local ahead of cloud on score, but cloud
-            # internally stays in lane order.
-            ordered = sorted(local, key=lambda route: self._route_score(route, task, strategy), reverse=True) + cloud
+            ordered = sorted(cloud, key=_score, reverse=True) + sorted(local, key=_score, reverse=True)
         else:
-            ordered = sorted(routes, key=lambda route: self._route_score(route, task, strategy), reverse=True)
+            ordered = sorted(routes, key=_score, reverse=True)
         diagnostics["ordered_routes"] = [route.name for route in ordered]
         if not ordered and force_secondary and strategy == "local_only":
             diagnostics["empty_reason"] = "force_secondary_conflicts_with_local_only"
@@ -653,6 +750,8 @@ class LLMRouter:
         context_cloud_eligible: bool = True,
         require_tools: bool = False,
     ) -> str:
+        if route.is_free_tier:
+            return "free_tier_excluded"
         if strategy == "local_only" and route.is_cloud:
             return "strategy_local_only"
         if require_tools and not route.reliable_tool_calling:
@@ -673,6 +772,8 @@ class LLMRouter:
         return ""
 
     def _policy_blocked_reason(self, route: ProviderRoute, cloud_allowed: bool, response_policy: str | None) -> str:
+        if route.is_free_tier:
+            return "free_tier_excluded"
         if route.deployment_status == "disabled":
             return "deployment_disabled"
         if not route.configured:
@@ -689,9 +790,19 @@ class LLMRouter:
             return "not_allowed_for_response_policy"
         return "policy_blocked"
 
-    def _route_score(self, route: ProviderRoute, task: str | None, strategy: str | None = None) -> int:
+    def _route_score(
+        self,
+        route: ProviderRoute,
+        task: str | None,
+        strategy: str | None = None,
+        capability_priority: dict[str, int] | None = None,
+    ) -> int:
         strategy = self._clean_routing_strategy(strategy or self.routing_strategy)
-        score = route.routing_priority + ROUTE_COST_ADJUSTMENTS[strategy].get(route.cost_tier, 0)
+        # The lane's ranking, when there is one, stands in for the hand-typed
+        # routing_priority. A catalog-resolved route is never ordered by a
+        # stored human preference integer.
+        base = (capability_priority or {}).get(route.name, route.routing_priority)
+        score = base + ROUTE_COST_ADJUSTMENTS[strategy].get(route.cost_tier, 0)
         if self._task_matches(task, route.recommended_for):
             score += 1000
         if self._task_matches(task, route.avoid_for):

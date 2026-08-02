@@ -83,6 +83,34 @@ def test_from_env_enables_secondary_when_flag_set():
     assert isinstance(provider, ClaudeProvider)
 
 
+def test_both_env_var_names_reach_this_layer():
+    """Setting either name must have a visible effect.
+
+    This layer read `CLAUDE_MODEL` while the shared gestalt-llm-contract package
+    declared `ANTHROPIC_MODEL` as canonical, so an operator who set the
+    canonical name silently configured nothing here.
+    """
+    base = {"ENABLE_CLAUDE_FALLBACK": "true", "ANTHROPIC_API_KEY": "sk-ant-test"}
+
+    via_canonical = _registry({**base, "ANTHROPIC_MODEL": "model-canonical"})
+    assert via_canonical.secondary_profile.model == "model-canonical"
+
+    via_alias = _registry({**base, "CLAUDE_MODEL": "model-alias"})
+    assert via_alias.secondary_profile.model == "model-alias"
+
+    both = _registry({**base, "ANTHROPIC_MODEL": "model-canonical", "CLAUDE_MODEL": "model-alias"})
+    assert both.secondary_profile.model == "model-canonical"
+
+
+def test_the_fallback_reports_itself_off_rather_than_guessing_a_model():
+    """No default model id. The previous one was a dated snapshot that outlived
+    the snapshot, and it silently overrode whatever the operator had set."""
+    reg = _registry({"ENABLE_CLAUDE_FALLBACK": "true", "ANTHROPIC_API_KEY": "sk-ant-test"})
+
+    assert reg.secondary_profile.model == ""
+    assert reg.build_secondary() is None
+
+
 def test_build_routes_exposes_profile_pool_without_cloud_key(tmp_path: Path):
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text(json.dumps({

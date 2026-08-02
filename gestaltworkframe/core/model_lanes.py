@@ -1,13 +1,26 @@
 """Task lanes: what a turn *requires*, expressed as a policy record.
 
-A lane never names a model. It states objective, machine-checkable
-requirements and a preference direction; `model_resolver` turns that into an
-ordered shortlist against the live catalog.
+A lane never names a model and it never carries an objective. It states
+objective, machine-checkable requirements: hard filters, quality floors, and
+the expected shape of the turn. `model_resolver` turns that plus a TIER passed
+per call into an ordered shortlist against the live catalog.
 
 Per `docs/standards/model-routing-policy.md`:
 
-    guide:  must:[tools], minContext:200k, minAgentic:50, minIntelligence:55, prefer:quality
-    lookup: must:[tools], minIntelligence:30, maxPromptPrice:$1/M,           prefer:cost
+    guide:  must:[tools], minContext:200k, minAgentic:35, minIntelligence:45,
+            shape:{in:6k, out:900, cached:4k}
+    lookup: must:[tools], minIntelligence:28, maxPromptPrice:$1/M,
+            shape:{in:1.5k, out:300}
+
+    resolve_lane(GUIDE_LANE, catalog, tier="best")
+    resolve_lane(LOOKUP_LANE, catalog, tier="cheap")
+
+The lane answers "what does this turn require, and what shape is it". The tier
+answers "among the models that already qualify, what should win". Collapsing
+them onto one axis is a defect with measured consequences: the objective ends
+up selecting the requirement, there is no way to ask for the same lane at a
+different objective, and a cost preference sitting inside an eligibility record
+reads as a property of the task when it is a choice somebody made.
 
 Lanes are configuration. They live in a deployment bundle
 (`deployments/<id>/lanes.yaml`) so a deployment can retune its own standards
@@ -18,7 +31,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
@@ -49,14 +62,25 @@ class Lane(BaseModel):
     min_agentic: float | None = None
 
     # --- data-handling filters --------------------------------------------
-    allow_free_tier: bool = False
-    """`:free` variants generally train on submitted prompts. Opt-in only."""
+    #
+    # There is deliberately NO `allow_free_tier` field, and there must never be
+    # one again. `:free` and `:batch` exclusions are unliftable: the first
+    # because free tiers generally train on submitted prompts and no setting
+    # makes a training corpus forget, the second because a batch SKU publishes
+    # its interactive sibling's indices, so it clears every floor, undercuts the
+    # real endpoint by half, and then fails a synchronous turn by arriving
+    # hours later. Lanes load from a per-deployment lanes.yaml, so a lane field
+    # here IS an operator setting, which is exactly what may not lift these.
 
     allow_preview: bool = False
-    """Preview endpoints get rotated; a live session must not break on one."""
+    """Preview endpoints get rotated; a live session must not break on one.
 
-    # --- ranking -----------------------------------------------------------
-    prefer: Literal["cost", "quality"] = "cost"
+    This is the only exclusion a lane may lift, because it is a stability
+    opinion rather than a data-handling or delivery-contract rule."""
+
+    # --- turn shape --------------------------------------------------------
+    #
+    # No `prefer` field. The objective is the TIER and it is passed per call.
     expected_input_tokens: int = 2_000
     expected_output_tokens: int = 500
     expected_cached_input_tokens: int = 0
@@ -64,14 +88,22 @@ class Lane(BaseModel):
     turn, and ranking both on one assumed shape picks the wrong model."""
 
     prefer_vendors: list[str] = Field(default_factory=list)
-    """Ordered vendor prefixes preferred among models that already cleared the
-    floors. A preference, never a filter: capability and price still decide who
-    is eligible, and if no preferred vendor qualifies the lane still resolves.
+    """Ordered vendor prefixes, used as a TIE-BREAK KEY and nothing else.
 
-    This is the doctrine's escape hatch for lanes judged on more than
-    correctness — house standard, client commitment, a brand promise that the
-    product is built on a particular model family. It is data, refreshable
-    without a deploy, rather than a model id frozen in code.
+    Default empty, and it sits BELOW every measured axis and below cost, one
+    place above the model id. That placement is the whole of what makes it
+    survivable. A stored name preference is stale-prone in proportion to its
+    AUTHORITY, not its existence: as the lowest key, name a vendor that no
+    longer clears the floors and it is skipped; name one that is no longer best
+    and the measured keys have already placed something above it; name nothing
+    relevant and the order falls through to the id. It can only separate models
+    the measured axes have already declared EQUAL, which is the only place
+    taste is the remaining information.
+
+    It used to be the FIRST sort key, ahead of margin and cost, which made it
+    the selector rather than the tie-break: "resolve to a shortlist, then order
+    it by a stored human preference" is the mechanism
+    docs/standards/model-routing-policy.md records as built, run, and deleted.
     """
 
     shortlist_size: int = 3
@@ -96,7 +128,6 @@ DEFAULT_LANES: tuple[Lane, ...] = (
         # models we ship for the outage case, not only by the live catalog.
         min_intelligence=28,
         max_prompt_price_per_million=1.0,
-        prefer="cost",
         expected_input_tokens=1_500,
         expected_output_tokens=300,
     ),
@@ -111,7 +142,6 @@ DEFAULT_LANES: tuple[Lane, ...] = (
         # lane keeps a real shortlist instead of resolving to one vendor.
         min_intelligence=45,
         min_agentic=35,
-        prefer="quality",
         expected_input_tokens=6_000,
         expected_output_tokens=900,
         expected_cached_input_tokens=4_000,
@@ -122,7 +152,6 @@ DEFAULT_LANES: tuple[Lane, ...] = (
         must=["tools", "structured_outputs"],
         min_context_tokens=200_000,
         min_coding=60,
-        prefer="quality",
         expected_input_tokens=12_000,
         expected_output_tokens=2_500,
         expected_cached_input_tokens=8_000,
@@ -138,7 +167,6 @@ DEFAULT_LANES: tuple[Lane, ...] = (
         # against the distribution rather than assuming a 0-100 scale.
         min_intelligence=55,
         min_coding=70,
-        prefer="quality",
         expected_input_tokens=20_000,
         expected_output_tokens=3_000,
         expected_cached_input_tokens=12_000,
@@ -151,6 +179,12 @@ def _lanes_path(deployment_dir: Path | None) -> Path | None:
         return None
     candidate = deployment_dir / "lanes.yaml"
     return candidate if candidate.is_file() else None
+
+
+# Keys a deployment might reach for to re-enable an unliftable exclusion. They
+# are dropped and reported rather than silently ignored, so an operator finds
+# out that the knob does not exist instead of believing it worked.
+UNLIFTABLE_KEYS = ("allow_free_tier", "allow_batch_tier", "allow_router_models")
 
 
 def load_lanes(deployment_dir: Path | None = None) -> dict[str, Lane]:
@@ -171,6 +205,15 @@ def load_lanes(deployment_dir: Path | None = None) -> dict[str, Lane]:
         for name, record in declared.items():
             if not isinstance(record, dict):
                 continue
+            record = dict(record)
+            for key in UNLIFTABLE_KEYS:
+                if record.pop(key, None) is not None:
+                    logger.warning(
+                        "lanes.yaml lane %r sets %s; that exclusion is a data-handling "
+                        "rule and cannot be lifted by configuration. Ignoring it.",
+                        name,
+                        key,
+                    )
             lanes[str(name)] = Lane(name=str(name), **record)
     except (OSError, ValueError, ValidationError) as exc:
         logger.warning("lanes.yaml at %s unusable (%s); using defaults", path, exc)

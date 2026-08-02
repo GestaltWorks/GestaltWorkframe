@@ -208,7 +208,12 @@ def test_repository_claude_profiles_use_current_api_ids():
     data = json.loads((ROOT / "llm" / "profiles.json").read_text(encoding="utf-8"))
     profiles = data["profiles"]
 
-    assert profiles["claude-haiku-4-5"]["model"] == "claude-haiku-4-5-20251001"
+    # Undated alias, matching the other Claude profiles in this file and the
+    # `direct` side of model_transport's alias table. The dated snapshot id it
+    # used to carry (`claude-haiku-4-5-20251001`) matched no entry in that
+    # table, so the direct route could never inherit the lane ranking and the
+    # aggregator was a single point of failure for this model.
+    assert profiles["claude-haiku-4-5"]["model"] == "claude-haiku-4-5"
     assert profiles["claude-sonnet-4-5"]["model"] == "claude-sonnet-4-5-20250929"
     assert profiles["claude-sonnet-4-6"]["model"] == "claude-sonnet-4-6"
     assert profiles["claude-opus-4-7"]["model"] == "claude-opus-4-7"

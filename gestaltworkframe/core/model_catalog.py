@@ -26,8 +26,34 @@ import httpx
 logger = logging.getLogger(__name__)
 
 CATALOG_URL = "https://openrouter.ai/api/v1/models"
+
+# Two bounds, because they answer two different questions and were previously
+# answered by the same absent check.
+#
+# The TTL is when a stored catalog stops being PREFERRED over a live fetch.
+# The hard max age is when it stops being USABLE AT ALL. 72h is a Friday-evening
+# outage nobody looks at until Monday.
+#
+# The fetch-failure path used to pass `ttl_seconds=10 * 365 * 24 * 3600`, i.e. a
+# decade, which is a shape test wearing an age test's clothes. A shape test
+# cannot tell a price from an hour ago from a price from last month, so a
+# promotional price that lapsed weeks ago could keep winning a cost-ranked lane
+# run after run while the reason string still said "cheapest of N". Past the
+# hard cap we refuse the file and degrade visibly to the pinned fallback.
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
+HARD_MAX_AGE_SECONDS = 72 * 60 * 60
 DEFAULT_TIMEOUT_SECONDS = 10.0
+
+# Router pseudo-models are not selectable models at all: they delegate the
+# routing decision away from the lane, which is the entire thing this system
+# exists to own, and they publish sentinel prices (0 and -1 per token) that win
+# any cost ranking outright. Match the bare slug as well as the colon-suffixed
+# forms.
+ROUTER_PSEUDO_MODELS = frozenset({
+    "openrouter/auto",
+    "openrouter/auto-beta",
+    "openrouter/free",
+})
 
 
 def _cache_path() -> Path:
@@ -55,18 +81,45 @@ class CatalogModel:
     expiration_date: str = ""
 
     @property
+    def _suffixes(self) -> list[str]:
+        return self.id.lower().split(":")[1:]
+
+    @property
     def is_free_tier(self) -> bool:
         """`:free` variants are generally trained on submitted prompts.
 
         Excluded as a data-handling filter before price is considered: a cost
         ranking would otherwise always select them, because zero is a
-        degenerate optimum.
+        degenerate optimum. UNLIFTABLE — no setting makes a training corpus
+        forget, so nothing in this codebase may re-admit one.
         """
-        return self.id.endswith(":free") or self.id.endswith(":free-tier")
+        return any(suffix in {"free", "free-tier"} for suffix in self._suffixes)
+
+    @property
+    def is_batch_tier(self) -> bool:
+        """`:batch` is the SAME model, half the price, hours later.
+
+        Excluded for a different reason from `:free`: arrival time, not price,
+        is the defect. No quality floor can catch it, because a batch SKU
+        publishes its interactive sibling's indices, so it clears every floor
+        and undercuts the real endpoint by roughly half. That makes it a
+        guaranteed winner of any cost-ranked lane and a guaranteed failure of a
+        synchronous turn. Also unliftable.
+        """
+        return any(suffix == "batch" for suffix in self._suffixes)
+
+    @property
+    def is_router_pseudo_model(self) -> bool:
+        """`openrouter/auto` and relatives: meta-routers, not models."""
+        return self.id.lower().split(":")[0] in ROUTER_PSEUDO_MODELS
 
     @property
     def is_preview(self) -> bool:
-        """Preview/experimental builds get rotated without notice."""
+        """Preview/experimental builds get rotated without notice.
+
+        This one is a stability opinion rather than a data-handling rule, which
+        is why it is the only exclusion a lane may lift.
+        """
         lowered = self.id.lower()
         return any(marker in lowered for marker in ("-preview", "-exp", ":alpha", ":beta", "-experimental"))
 
@@ -184,19 +237,61 @@ PINNED_FALLBACK: tuple[CatalogModel, ...] = (
     ),
 )
 
+def cache_age_seconds(path: Path) -> float:
+    """Age of the stored catalog. A missing or unparseable stamp is infinite.
+
+    A missing stamp must not read as "fresh": that is how a partial write or a
+    resumed run silently keeps a month-old price in a cost ranking.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return float("inf")
+    try:
+        fetched_at = float(payload.get("fetched_at"))
+    except (TypeError, ValueError):
+        return float("inf")
+    if fetched_at <= 0:
+        return float("inf")
+    return max(0.0, time.time() - fetched_at)
+
+
 def _read_cache(path: Path, ttl_seconds: int) -> list[CatalogModel] | None:
     try:
         if not path.is_file():
             return None
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        fetched_at = float(payload.get("fetched_at") or 0)
-        if time.time() - fetched_at > ttl_seconds:
+        if cache_age_seconds(path) > ttl_seconds:
             return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
         models = parse_catalog(payload.get("catalog") or {})
         return models or None
     except (OSError, ValueError) as exc:
         logger.warning("model catalog cache unreadable at %s: %s", path, exc)
         return None
+
+
+def _read_cache_within_hard_cap(path: Path) -> list[CatalogModel] | None:
+    """The degradation read: stale is fine, ancient is not.
+
+    Between the TTL and the hard cap the file is used and its real age is
+    logged at warn. Past the hard cap it is refused, and the caller degrades to
+    the pinned fallback instead of ranking on prices of unknown vintage.
+    """
+    if not path.is_file():
+        return None
+    age = cache_age_seconds(path)
+    if age > HARD_MAX_AGE_SECONDS:
+        logger.warning(
+            "model catalog cache at %s is %.1fh old, past the %.0fh hard cap; refusing it",
+            path,
+            age / 3600.0,
+            HARD_MAX_AGE_SECONDS / 3600.0,
+        )
+        return None
+    models = _read_cache(path, ttl_seconds=HARD_MAX_AGE_SECONDS)
+    if models:
+        logger.warning("using stale model catalog cache from %s (%.1fh old)", path, age / 3600.0)
+    return models
 
 
 def _write_cache(path: Path, raw: dict[str, Any]) -> None:
@@ -242,9 +337,8 @@ async def fetch_catalog(
         return models
     except Exception as exc:  # network, HTTP, or shape problems all degrade the same way
         logger.warning("model catalog fetch failed (%s); falling back", exc)
-        stale = _read_cache(path, ttl_seconds=10 * 365 * 24 * 3600)
+        stale = _read_cache_within_hard_cap(path)
         if stale:
-            logger.warning("using stale model catalog cache from %s", path)
             return stale
         logger.warning("using pinned fallback catalog of %d models", len(PINNED_FALLBACK))
         return list(PINNED_FALLBACK)
@@ -271,9 +365,8 @@ def load_cached_catalog_sync(
     if fresh:
         return fresh
     if allow_stale:
-        stale = _read_cache(path, ttl_seconds=10 * 365 * 24 * 3600)
+        stale = _read_cache_within_hard_cap(path)
         if stale:
-            logger.debug("using stale model catalog cache for synchronous read")
             return stale
     return list(PINNED_FALLBACK)
 

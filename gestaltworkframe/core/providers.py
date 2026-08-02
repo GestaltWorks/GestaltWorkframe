@@ -294,7 +294,13 @@ class ClaudeProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-haiku-4-5-20251001",
+        # No default model id: it was `claude-haiku-4-5-20251001` until
+        # 2026-08-01. A default here is a stale constant that outlives the
+        # snapshot it names and can only be corrected by a redeploy, and it
+        # silently substitutes itself for whatever the caller meant. The caller
+        # (provider registry / profile store) already knows which model this
+        # route is for. See docs/standards/model-routing-policy.md.
+        model: str = "",
         params: GenerationParams | None = None,
         base_url: str | None = None,
     ):

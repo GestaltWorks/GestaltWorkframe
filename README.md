@@ -367,7 +367,8 @@ for r in conn.execute('SELECT created_at, role, name, email, data FROM contactre
 | `LIBRARY_PUBLISHER_BASE_BRANCH` | No | Target branch for corpus publishing. Defaults to `main`. |
 | `ANTHROPIC_API_KEY` | Only with Claude fallback | Anthropic key for the secondary provider. |
 | `CLAUDE_PROFILE` | No | Claude profile name from `llm/profiles.json`. |
-| `CLAUDE_MODEL` | No | Claude model name when no Claude profile is set. |
+| `ANTHROPIC_MODEL` | Only with Claude fallback | Claude model name when no Claude profile is set. No default: unset means the fallback reports itself off rather than dispatching to a guess. |
+| `CLAUDE_MODEL` | No | Documented alias for `ANTHROPIC_MODEL`. `ANTHROPIC_MODEL` wins when both are set. |
 | `MS365_TENANT_ID` | No | Azure AD tenant for Graph mail. |
 | `MS365_CLIENT_ID` | No | Azure app client ID for Graph mail. |
 | `MS365_CLIENT_SECRET` | No | Azure app client secret for Graph mail. |

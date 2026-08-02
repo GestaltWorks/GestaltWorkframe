@@ -76,7 +76,12 @@ class SecondaryProviderProfile(BaseModel):
     enabled_by_default: bool = True
     allowed_response_policies: list[str] = Field(default_factory=lambda: ["local_then_low_cost"])
     api_key: str = Field(default="", repr=False)
-    model: str = "claude-haiku-4-5-20251001"
+    model: str = ""
+    """Named by the operator, never defaulted. A dated snapshot id here
+    (`claude-haiku-4-5-20251001` until 2026-08-01) is a stale constant that only
+    a code change can correct, and it silently overrides whatever the operator
+    thought they had configured. Empty means "no fallback model named", which
+    `build_secondary` reports rather than guessing."""
     params: GenerationParams = Field(default_factory=lambda: GenerationParams(max_tokens=4096))
     capabilities: list[str] = Field(default_factory=lambda: ["chat", "tools", "rag_answering"])
     tool_calling_quality: Literal["none", "weak", "ok", "strong"] = "strong"
@@ -162,7 +167,11 @@ class ProviderRegistry:
                 name="env-secondary",
                 enabled=_env_bool(llm_env.ENABLE_CLAUDE_FALLBACK),
                 api_key=_env_text(llm_env.ANTHROPIC_API_KEY),
-                model=_env_text("CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
+                # ANTHROPIC_MODEL is the shared contract's canonical name;
+                # CLAUDE_MODEL is its documented alias, which this layer used to
+                # read on its own. Reading only CLAUDE_MODEL meant an operator
+                # who set ANTHROPIC_MODEL had no effect here at all.
+                model=_env_text(llm_env.ANTHROPIC_MODEL) or _env_text(llm_env.CLAUDE_MODEL_ALIAS),
             )
 
         return cls(primary=primary, secondary=secondary, store=store)
@@ -205,6 +214,16 @@ class ProviderRegistry:
     def build_secondary(self) -> LLMProvider | None:
         s = self.secondary_profile
         if not s.enabled or not s.api_key:
+            return None
+        if not s.model:
+            # Loud and visible beats a guess. The previous default was a dated
+            # snapshot id that outlived the snapshot.
+            logger.warning(
+                "Anthropic fallback is enabled and keyed but no model is named; "
+                "set %s (or its %s alias). Fallback stays off.",
+                llm_env.ANTHROPIC_MODEL,
+                llm_env.CLAUDE_MODEL_ALIAS,
+            )
             return None
         provider = ClaudeProvider(
             api_key=s.api_key,
