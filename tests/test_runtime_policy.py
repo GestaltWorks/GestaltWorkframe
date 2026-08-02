@@ -15,7 +15,6 @@ def test_generation_concurrency_defaults_match_parallelism_decision():
     assert policy.can_start("local", active_total=2, active_local=1, active_cloud=1)
     assert not policy.can_start("local", active_total=2, active_local=2, active_cloud=0)
     assert not policy.can_start("premium", active_total=3, active_local=1, active_cloud=2)
-    assert policy.can_start("premium", active_total=3, active_local=1, active_cloud=2, weighted_required=True)
 
 
 def test_generation_concurrency_env_clamps_to_safe_bounds():

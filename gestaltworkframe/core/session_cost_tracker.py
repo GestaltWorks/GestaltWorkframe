@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -24,19 +23,6 @@ import httpx
 logger = logging.getLogger(__name__)
 
 DEFAULT_ALERT_THRESHOLD_USD = 5.0
-
-
-@dataclass
-class SessionCost:
-    session_id: str
-    provider_id: str
-    model: str
-    input_tokens: int
-    output_tokens: int
-    input_cost_usd: float
-    output_cost_usd: float
-    total_cost_usd: float
-    timestamp: str
 
 
 class SessionCostTracker:

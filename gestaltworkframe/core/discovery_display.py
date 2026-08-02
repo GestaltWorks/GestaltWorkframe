@@ -79,7 +79,6 @@ _GITHUB_ARTIFACT_PATTERN = re.compile(r"^(?P<repo>[^ /]+/[^ ]+) artifact:\s*(?P<
 _GITHUB_COMMIT_PATTERN = re.compile(r"^(?P<repo>[^ /]+/[^ ]+) commit (?P<sha>[0-9a-f]{7}):\s*(?P<message>.+)$")
 _GITHUB_COMMIT_NO_MSG_PATTERN = re.compile(r"^(?P<repo>[^ /]+/[^ ]+) commit (?P<sha>[0-9a-f]{7})\s*$")
 _GITHUB_USER_REPO_PATTERN = re.compile(r"^(?P<account>[^ ]+) repository:\s*(?P<repo>.+)$")
-_SUBREDDIT_FALLBACK_PATTERN = re.compile(r"^r/(?P<sub>\S+) post$")
 
 
 def display_finding_title(raw_title: str, finding_type: str = "", watch_type: str = "") -> str:

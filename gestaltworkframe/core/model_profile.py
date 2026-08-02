@@ -31,7 +31,14 @@ class ModelProfile(BaseModel):
     base_url_env: str = ""
     api_key_env: str = ""
     role: Literal["primary", "secondary", "escalation"] = "primary"
-    cost_tier: Literal["local", "free", "low_cost", "premium"] = "local"
+    # No `"free"` tier, and there must not be one again. It described an
+    # aggregator `:free` endpoint, which is excluded outright as a data-handling
+    # rule: those endpoints generally train on submitted prompts, and no setting
+    # makes a training corpus forget. "Free" in this shop means local inference
+    # on our own hardware, which is what `"local"` says. Leaving the value in the
+    # Literal let a profile declare a tier that every cloud/local split in the
+    # codebase then had to special-case, and two of them got it wrong.
+    cost_tier: Literal["local", "low_cost", "premium"] = "local"
     # Per-profile pricing (USD per million tokens). 0.0 = free / unknown.
     input_price_usd_per_million: float = 0.0
     output_price_usd_per_million: float = 0.0
@@ -59,10 +66,6 @@ class ModelProfile(BaseModel):
         if self.enabled_by_default is not None:
             return self.enabled_by_default
         return self.deployment_status != "disabled"
-
-    @property
-    def is_free(self) -> bool:
-        return self.cost_tier in {"local", "free"}
 
 
 _DEFAULT_PROFILES_PATH = Path(__file__).parent.parent.parent / "llm" / "profiles.json"
@@ -95,16 +98,12 @@ class ProfileStore:
     def profiles(self) -> list[ModelProfile]:
         return list(self._profiles.values())
 
-    def recommended(self, task: str, provider: str | None = None) -> list[ModelProfile]:
-        task = task.strip().lower()
-        matches = []
-        for profile in self._profiles.values():
-            if provider and profile.provider != provider:
-                continue
-            if task and task not in {item.lower() for item in profile.recommended_for}:
-                continue
-            matches.append(profile)
-        return sorted(matches, key=lambda profile: profile.routing_priority, reverse=True)
+    # No `recommended(task, provider)` query. Nothing called it: task fit is
+    # decided on the ROUTE, by `LLMRouter._task_matches` against
+    # `recommended_for` / `avoid_for`, and the ordering above it comes from the
+    # lane. A second task-matching implementation on the profile store, ranked
+    # by the hand-typed `routing_priority` integer, was a selector nobody
+    # consulted and it ranked on the axis the doctrine took authority away from.
 
 
 _default_store: ProfileStore | None = None

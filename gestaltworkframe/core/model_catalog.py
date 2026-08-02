@@ -19,7 +19,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import httpx
 
@@ -397,7 +397,3 @@ async def refresh_catalog_forever(
             await asyncio.sleep(max(60, interval_seconds))
         except asyncio.CancelledError:
             raise
-
-
-def index_by_id(models: Iterable[CatalogModel]) -> dict[str, CatalogModel]:
-    return {model.id: model for model in models}

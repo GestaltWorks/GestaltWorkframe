@@ -236,14 +236,6 @@ def load_corpus_sources(sources: tuple[CorpusSource, ...] = CORPUS_SOURCES) -> l
     return docs
 
 
-def load_main_corpus_docs() -> list[Document]:
-    return load_directory_source(MAIN_CORPUS_SOURCE)
-
-
-def load_cheat_sheet() -> list[Document]:
-    return load_html_file_source(API_CHEAT_SHEET_SOURCE)
-
-
 def main():
     all_docs = load_corpus_sources()
     if not all_docs:

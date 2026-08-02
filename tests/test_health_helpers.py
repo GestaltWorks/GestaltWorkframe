@@ -68,6 +68,20 @@ def test_is_cloud_status_by_cost_tier():
     assert health._is_cloud_status({}) is False
 
 
+def test_is_cloud_status_matches_the_router_not_a_list_of_billing_tiers():
+    """Anything that is not local is cloud, the same rule ProviderRoute uses.
+
+    This helper used to enumerate `{"low_cost", "premium"}`, so a route on any
+    other tier was reported to a public caller as a LOCAL model: the readiness
+    probe would have claimed the prompt stayed on the box when it did not.
+    The same latent defect was fixed on `ProviderRoute.is_cloud` (see
+    tests/test_free_tier_exclusion.py) and is closed here for the same reason.
+    """
+    assert health._is_cloud_status({"cost_tier": "free"}) is True
+    assert health._is_cloud_status({"cost_tier": "some_tier_nobody_has_added_yet"}) is True
+    assert health._is_cloud_status({"cost_tier": ""}) is False
+
+
 def test_public_provider_group_aggregates_any():
     group = health._public_provider_group(
         "primary",

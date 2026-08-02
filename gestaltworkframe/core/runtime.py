@@ -66,10 +66,13 @@ class GenerationConcurrencyPolicy:
         active_total: int,
         active_local: int,
         active_cloud: int,
-        weighted_required: bool = False,
     ) -> bool:
-        total_limit = self.hard_parallel_limit if weighted_required else self.normal_parallel_limit
-        if active_total >= min(total_limit, self.hard_parallel_limit):
+        # No `weighted_required` escape to `hard_parallel_limit`. Nothing ever
+        # passed it: the router's only call site admits a turn on cost_tier and
+        # the three counters, and there is no notion of a weighted turn anywhere
+        # to derive it from. `hard_parallel_limit` still does its real job, which
+        # is clamping the other three limits (see `from_env`).
+        if active_total >= min(self.normal_parallel_limit, self.hard_parallel_limit):
             return False
         if cost_tier == "local":
             return active_local < self.max_local_generations

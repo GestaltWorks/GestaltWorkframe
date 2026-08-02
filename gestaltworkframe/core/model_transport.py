@@ -74,14 +74,6 @@ class TransportMap:
             return DIRECT
         return UNKNOWN
 
-    def aliases_for(self, catalog_id: str) -> list[str]:
-        """Every way to reach this model, primary first."""
-        aliases = [f"{self.gateway_prefix}{catalog_id}"]
-        direct = self.direct_aliases.get(catalog_id)
-        if direct:
-            aliases.append(direct)
-        return aliases
-
 
 def load_transport_map(deployment_dir: Path | None = None) -> TransportMap:
     """Load the transport map from a deployment bundle.

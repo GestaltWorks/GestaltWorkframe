@@ -75,12 +75,6 @@ STRATEGY_TIERS = {
     "cloud_only": "auto",
 }
 
-# Transport mapping is configuration, not judgement: the gateway prefixes its
-# aliases (`openrouter/anthropic/claude-haiku-4.5`) while the catalog keys the
-# same model as `anthropic/claude-haiku-4.5`.
-GATEWAY_PREFIX_ENV = "MODEL_GATEWAY_PREFIX"
-DEFAULT_GATEWAY_PREFIX = "openrouter/"
-
 # Which lane a task belongs to. Unmapped tasks use the guide lane, the default
 # conversational turn.
 TASK_LANES = {
@@ -1080,8 +1074,11 @@ class LLMRouter:
         return ""
 
     def _policy_blocked_reason(self, route: ProviderRoute, cloud_allowed: bool, response_policy: str | None) -> str:
-        if route.is_free_tier:
-            return "free_tier_excluded"
+        # No `is_free_tier` arm here. Its one caller, `_selection_blocked_reason`,
+        # returns "free_tier_excluded" before it can reach this, so the arm could
+        # never fire and only made the exclusion look like it lived in two
+        # places. It lives in `_route_allowed` and `_selection_blocked_reason`,
+        # both of which check it first.
         if route.deployment_status == "disabled":
             return "deployment_disabled"
         if not route.configured:
@@ -1307,7 +1304,6 @@ class LLMRouter:
         refresh_headroom_cache() at the start of each _ordered_routes() call.
         Returns 1.0 when no multi gate is configured or provider has no cap.
         """
-        from gestaltworkframe.core.cloud_budget import MultiProviderBudgetGate
         if not isinstance(self.cloud_budget, MultiProviderBudgetGate):
             return 1.0
         return self.cloud_budget.headroom(provider_id)
@@ -1467,7 +1463,6 @@ class LLMRouter:
 
         sent_primary_chunk = False
         require_tools = bool(tools)
-        from gestaltworkframe.core.cloud_budget import MultiProviderBudgetGate
         if isinstance(self.cloud_budget, MultiProviderBudgetGate):
             try:
                 await self.cloud_budget.refresh_headroom_cache()
@@ -1541,7 +1536,6 @@ class LLMRouter:
         await self._reset_breaker_if_healthy()
 
         require_tools = bool(tools)
-        from gestaltworkframe.core.cloud_budget import MultiProviderBudgetGate
         if isinstance(self.cloud_budget, MultiProviderBudgetGate):
             try:
                 await self.cloud_budget.refresh_headroom_cache()

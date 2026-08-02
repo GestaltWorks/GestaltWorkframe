@@ -179,6 +179,25 @@ async def test_chat_metrics_records_safe_operational_counts():
     assert snapshot["by_route_family"]["cloud"] == 1
 
 
+def test_route_family_calls_anything_not_local_cloud():
+    """The metric must not under-count cloud turns.
+
+    `_route_family` used to enumerate `{"low_cost", "premium"}` and label
+    everything else "local", so a turn on any other tier was tallied in the
+    panel's LOCAL count while the prompt had left the box. The router's own
+    rule is `cost_tier != "local"` (ProviderRoute.is_cloud), and this now
+    matches it. An unknown tier is still reported as unknown rather than
+    guessed either way.
+    """
+    assert api_chat._route_family("local", "route") == "local"
+    assert api_chat._route_family("low_cost", "route") == "cloud"
+    assert api_chat._route_family("premium", "route") == "cloud"
+    assert api_chat._route_family("free", "route") == "cloud"
+    assert api_chat._route_family("some_tier_nobody_has_added_yet", "route") == "cloud"
+    assert api_chat._route_family(None, "route") == "unknown"
+    assert api_chat._route_family("premium", None) is None
+
+
 @pytest.mark.asyncio
 async def test_admin_health_payload_includes_chat_metrics():
     metrics = api_main.ChatMetrics()

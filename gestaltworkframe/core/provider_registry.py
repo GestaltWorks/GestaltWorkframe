@@ -265,8 +265,11 @@ class ProviderRegistry:
         return self._route_from_model_profile(profile, provider, configured=True)
 
     def _route_from_openai_compatible_profile(self, profile: ModelProfile) -> ProviderRoute:
-        # Map provider name to key store ID
-        provider_key_id = profile.provider_id if hasattr(profile, 'provider_id') else "openai"
+        # Map provider name to key store ID. There is no `provider_id` field on
+        # ModelProfile and pydantic does not keep unknown ones, so the
+        # `hasattr(profile, "provider_id")` that used to guard this was always
+        # False and "openai" was always the starting value.
+        provider_key_id = "openai"
         if profile.api_key_env and "ANTHROPIC" in profile.api_key_env:
             provider_key_id = "anthropic"
         elif profile.api_key_env and "GOOGLE" in profile.api_key_env:

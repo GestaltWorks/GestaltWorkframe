@@ -87,7 +87,17 @@ async def _provider_status(role: str, provider: Any) -> dict[str, Any]:
 
 
 def _is_cloud_status(status: dict[str, Any]) -> bool:
-    return status.get("cost_tier") in {"low_cost", "premium"}
+    """Same definition of "cloud" the router uses: anything that is not local.
+
+    This used to enumerate `{"low_cost", "premium"}`, so any tier outside that
+    pair was reported to the public as a LOCAL model. "Cloud" is a
+    data-handling question (does the prompt leave this box), not a billing one,
+    and a readiness probe that answers it by listing the billing tiers it
+    happens to know is wrong the moment a new one exists. An absent tier is
+    still not a claim of cloud: nothing is known about that route.
+    """
+    cost_tier = status.get("cost_tier")
+    return bool(cost_tier) and cost_tier != "local"
 
 
 def _public_provider_group(role: str, statuses: list[dict[str, Any]]) -> dict[str, Any]:

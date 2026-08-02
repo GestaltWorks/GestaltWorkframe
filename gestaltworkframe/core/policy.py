@@ -89,7 +89,6 @@ class ResponsePolicy(StrEnum):
     LOCAL_ONLY = "local_only"
     LOCAL_THEN_LOW_COST = "local_then_low_cost"
     LOCAL_THEN_CLAUDE_IF_HIGH_VALUE = "local_then_claude_if_high_value"
-    DEMO_SAFE = "demo_safe"
 
 
 class ConversationStage(StrEnum):

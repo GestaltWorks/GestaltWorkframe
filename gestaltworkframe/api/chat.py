@@ -269,13 +269,20 @@ def _selected_route_tier(services: AppServices, selected_route: Any, candidates:
 
 
 def _route_family(cost_tier: str | None, selected_route: Any) -> str | None:
+    """Which family served the turn, by the router's own definition of cloud.
+
+    `ProviderRoute.is_cloud` is `cost_tier != "local"`, because "cloud" means
+    the prompt left this box. This used to enumerate the billing tiers instead,
+    so any tier outside `{"low_cost", "premium"}` was COUNTED AS LOCAL in the
+    chat metrics: the panel's "Local turns" number would have absorbed turns
+    that went to a third party. An unknown tier stays "unknown" rather than
+    being guessed either way.
+    """
     if not selected_route:
         return None
-    if cost_tier in {"low_cost", "premium"}:
-        return "cloud"
-    if cost_tier:
-        return "local"
-    return "unknown"
+    if not cost_tier:
+        return "unknown"
+    return "local" if cost_tier == "local" else "cloud"
 
 
 def _safe_decision_log_payload(decision: Any) -> dict[str, Any]:

@@ -11,6 +11,7 @@ import type {
 import {
   apiTargetLabel,
   countValue,
+  isCloudTier,
   localApiTarget,
   percentValue,
   policyPresets,
@@ -155,8 +156,8 @@ export default function AdminHealthPanel() {
   };
 
   const models = health?.models || [];
-  const localModels = models.filter((model) => !["low_cost", "premium"].includes(model.cost_tier || ""));
-  const cloudModels = models.filter((model) => ["low_cost", "premium"].includes(model.cost_tier || ""));
+  const localModels = models.filter((model) => !isCloudTier(model.cost_tier));
+  const cloudModels = models.filter((model) => isCloudTier(model.cost_tier));
   const policy = health?.policy;
   const cachedModels = models.filter((model) => model.health_cached).length;
   const skippedHealthChecks = models.filter((model) => model.health_checked === false).length;

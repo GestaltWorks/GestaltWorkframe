@@ -227,15 +227,21 @@ def test_openrouter_route_gets_openrouter_budget_id(tmp_path):
     import json
     profiles_path.write_text(json.dumps({
         "profiles": {
-            "or-free": {
+            # Not `or-free` / `openrouter/auto` / `cost_tier: "free"` any more.
+            # That fixture was a copy of a profile the routing work deleted: a
+            # router pseudo-model on a tier that no longer exists, declaring
+            # local_only while pointing at the public internet. These two tests
+            # are about budget-id assignment, so the profile only has to be a
+            # legal OpenRouter route.
+            "or-cheap": {
                 "provider": "openrouter",
-                "model": "openrouter/auto",
+                "model": "z-ai/glm-5.2",
                 "api_key_env": "OR_KEY",
-                "role": "primary",
-                "cost_tier": "free",
+                "role": "secondary",
+                "cost_tier": "low_cost",
                 "deployment_status": "active",
                 "enabled_by_default": True,
-                "allowed_response_policies": ["local_only"],
+                "allowed_response_policies": ["local_then_low_cost"],
             },
         }
     }), encoding="utf-8")
@@ -352,15 +358,21 @@ def test_preferred_provider_id_empty_by_default(tmp_path):
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text(json.dumps({
         "profiles": {
-            "or-free": {
+            # Not `or-free` / `openrouter/auto` / `cost_tier: "free"` any more.
+            # That fixture was a copy of a profile the routing work deleted: a
+            # router pseudo-model on a tier that no longer exists, declaring
+            # local_only while pointing at the public internet. These two tests
+            # are about budget-id assignment, so the profile only has to be a
+            # legal OpenRouter route.
+            "or-cheap": {
                 "provider": "openrouter",
-                "model": "openrouter/auto",
+                "model": "z-ai/glm-5.2",
                 "api_key_env": "OR_KEY",
-                "role": "primary",
-                "cost_tier": "free",
+                "role": "secondary",
+                "cost_tier": "low_cost",
                 "deployment_status": "active",
                 "enabled_by_default": True,
-                "allowed_response_policies": ["local_only"],
+                "allowed_response_policies": ["local_then_low_cost"],
             },
         }
     }), encoding="utf-8")
