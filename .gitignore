@@ -49,3 +49,6 @@ Thumbs.db
 coverage.xml
 htmlcov/
 previews/
+
+# Generated model catalog cache (prices + indices, refreshed from the API)
+llm/.model-catalog-cache.json
