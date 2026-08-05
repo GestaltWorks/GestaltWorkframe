@@ -486,3 +486,40 @@ async def test_a_synthesized_route_is_closed_and_rekeyed_with_the_rest(catalog):
 
     await router.close()
     assert route.provider.client.is_closed
+
+
+def test_a_disabled_configured_route_is_not_resurrected_by_synthesis(catalog):
+    """The operator kill-switch survives synthesis.
+
+    Downstream review finding (critical, EGI_bot#85): the pin set used to be
+    computed from the gate-passed routes only, so admin-disabling a configured
+    route removed its model from the dedupe set and synthesis re-created the
+    identical model under a `catalog:` name no override covers."""
+    catalog([_entry("vendor/superior", prompt=0.2, completion=0.8, intelligence=60)])
+    router = LLMRouter(primary=None, routes=[_configured("pinned", "vendor/superior")])
+    router.set_route_enabled("pinned", False)
+
+    names, diagnostics = _order(router)
+
+    assert names == [], "the disabled model must not serve under any name"
+    assert diagnostics["capability_synthesized"] == []
+
+
+def test_a_breakered_configured_route_benches_its_model_for_synthesis(catalog):
+    """A failing upstream is not re-dispatched through a synthesized twin.
+
+    Breaker-open configured routes are gate-blocked before capability
+    ordering, so the benched sweep must cover the full fleet or the resolver
+    ranks the same failing model straight back in."""
+    catalog([
+        _entry("vendor/flaky", prompt=0.1, completion=0.2, intelligence=60),
+        _entry("vendor/steady", prompt=0.9, completion=3.0, intelligence=50),
+    ])
+    flaky = _configured("flaky", "vendor/flaky")
+    router = LLMRouter(primary=None, routes=[flaky])
+    router._route_breaker_open.add(router._route_key(flaky))
+
+    names, _ = _order(router)
+
+    assert not any("vendor/flaky" in name for name in names)
+    assert any("vendor/steady" in name for name in names)

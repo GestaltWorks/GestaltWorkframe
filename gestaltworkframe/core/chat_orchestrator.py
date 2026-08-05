@@ -730,7 +730,13 @@ class ChatTurnOrchestrator:
     def _last_selected_route_was_cloud(self) -> bool:
         diagnostics = getattr(self.router, "route_diagnostics", lambda: {})()
         selected = diagnostics.get("selected_route") if isinstance(diagnostics, dict) else ""
-        routes = getattr(self.router, "routes", [])
+        # Catalog-derived routes live outside router.routes; a turn served by
+        # one is still a cloud turn, and misclassifying it re-enabled a second
+        # cloud retry after a cloud call had already run.
+        routes = list(getattr(self.router, "routes", []))
+        synthesized = getattr(self.router, "_synthesized_routes", {})
+        if isinstance(synthesized, dict):
+            routes.extend(synthesized.values())
         return any(getattr(route, "name", "") == selected and bool(getattr(route, "is_cloud", False)) for route in routes)
 
     def _cloud_retry_message(self) -> Message:

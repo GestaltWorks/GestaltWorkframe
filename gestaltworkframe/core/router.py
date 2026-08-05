@@ -773,7 +773,11 @@ class LLMRouter:
         redundancy for its own sake: they run against the DISPATCH id, which is
         the string that would actually be sent.
         """
-        configured_ids = {self._catalog_id(route.model) for route in configured_cloud}
+        # The pin set is EVERY configured cloud route, not just the ones that
+        # passed this turn's gate: an operator who disabled a route in the
+        # admin surface has killed that model, and synthesis must not
+        # resurrect it under a `catalog:` name that no override covers.
+        configured_ids = {self._catalog_id(route.model) for route in self.routes if route.is_cloud}
         # A configured profile earns +1000 from `recommended_for` naming this
         # task. A catalog-derived route cleared the same task's LANE against
         # measured indices, which is the machine-checkable version of the same
@@ -847,10 +851,14 @@ class LLMRouter:
         tier = STRATEGY_TIERS.get(self._clean_routing_strategy(strategy), "auto")
         catalog = load_cached_catalog_sync()
         # Availability is observed, not published. Reuse the breaker the router
-        # already maintains rather than inventing a second failure signal.
+        # already maintains rather than inventing a second failure signal. The
+        # sweep covers ALL configured cloud routes, not the gate-passed subset:
+        # a breaker-open route is gate-blocked before it reaches this method,
+        # and benching by catalog id is what stops the resolver from ranking
+        # the same failing upstream back in through a synthesized twin.
         benched = {
             self._catalog_id(route.model)
-            for route in cloud_routes
+            for route in [*cloud_routes, *(r for r in self.routes if r.is_cloud)]
             if self._route_key(route) in self._route_breaker_open
             or self._route_error_count.get(self._route_key(route), 0) >= self.error_threshold
         }
@@ -1341,6 +1349,8 @@ class LLMRouter:
             session_id,
             estimated_input_tokens=self._estimate_input_tokens(messages),
             requested_output_tokens=self._cloud_max_tokens(route),
+            input_price_usd_per_million=route.input_price_usd_per_million or None,
+            output_price_usd_per_million=route.output_price_usd_per_million or None,
         )
         if not decision.allowed:
             logger.warning("Cloud escalation blocked by budget gate: %s", decision.reason)

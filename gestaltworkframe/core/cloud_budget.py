@@ -146,6 +146,8 @@ class CloudBudgetGate:
         session_id: str | None,
         estimated_input_tokens: int = 0,
         requested_output_tokens: int = 0,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
     ) -> CloudBudgetDecision:
         estimated_input_tokens = max(estimated_input_tokens, 0)
         requested_output_tokens = max(requested_output_tokens, 0)
@@ -155,7 +157,13 @@ class CloudBudgetGate:
             blocked = self._preflight_block_reason(estimated_input_tokens, requested_output_tokens)
             if blocked:
                 return CloudBudgetDecision(allowed=False, reason=blocked)
-            return await self._reserve_sqlite(session_id, estimated_input_tokens, requested_output_tokens)
+            return await self._reserve_sqlite(
+                session_id,
+                estimated_input_tokens,
+                requested_output_tokens,
+                input_price_usd_per_million,
+                output_price_usd_per_million,
+            )
 
     async def availability(
         self,
@@ -284,6 +292,8 @@ class CloudBudgetGate:
         session_id: str | None,
         estimated_input_tokens: int,
         requested_output_tokens: int,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
     ) -> CloudBudgetDecision:
         await self.init()
         if not self._store_ready:
@@ -305,6 +315,7 @@ class CloudBudgetGate:
                 blocked = self._cap_exhausted_reason(
                     counts.get(session_key, 0), counts.get(day_key, 0), counts.get(month_key, 0),
                     used["day_usd"], used["month_usd"], estimated_input_tokens, requested_output_tokens,
+                    input_price_usd_per_million, output_price_usd_per_million,
                 )
                 if blocked:
                     return CloudBudgetDecision(allowed=False, reason=blocked)
@@ -347,6 +358,8 @@ class CloudBudgetGate:
         month_usd: float,
         estimated_input_tokens: int,
         requested_output_tokens: int,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
     ) -> str:
         if self.config.max_calls_per_session > 0 and session_calls >= self.config.max_calls_per_session:
             return "session_call_cap_exhausted"
@@ -355,16 +368,30 @@ class CloudBudgetGate:
         if self.config.max_calls_per_month > 0 and month_calls >= self.config.max_calls_per_month:
             return "monthly_call_cap_exhausted"
         # Check USD caps against actual usage + estimated cost of this request
-        est_cost = self._estimate_cost(estimated_input_tokens, requested_output_tokens)
+        est_cost = self._estimate_cost(
+            estimated_input_tokens,
+            requested_output_tokens,
+            input_price_usd_per_million,
+            output_price_usd_per_million,
+        )
         if self.config.max_daily_usd > 0 and (day_usd + est_cost) > self.config.max_daily_usd:
             return "daily_usd_cap_exhausted"
         if self.config.max_monthly_usd > 0 and (month_usd + est_cost) > self.config.max_monthly_usd:
             return "monthly_usd_cap_exhausted"
         return ""
 
-    def _estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
-        input_cost = self._input_cost(input_tokens, self.config.input_price_usd_per_million)
-        output_cost = self._output_cost(output_tokens, self.config.output_price_usd_per_million)
+    def _estimate_cost(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
+    ) -> float:
+        # A route's real catalog price wins over the flat config price when it
+        # is known: estimating a cheap model at the premium default starves the
+        # caps, and estimating a premium model at a cheap default underbooks.
+        input_cost = self._input_cost(input_tokens, input_price_usd_per_million or self.config.input_price_usd_per_million)
+        output_cost = self._output_cost(output_tokens, output_price_usd_per_million or self.config.output_price_usd_per_million)
         return input_cost + output_cost
 
     def _input_cost(self, tokens: int, price_per_million: float | None = None) -> float:
@@ -786,6 +813,8 @@ class MultiProviderBudgetGate:
         estimated_input_tokens: int = 0,
         requested_output_tokens: int = 0,
         provider_id: str | None = None,
+        input_price_usd_per_million: float | None = None,
+        output_price_usd_per_million: float | None = None,
     ) -> CloudBudgetDecision:
         """Reserve budget for a session. Uses provider-specific gate if available, otherwise global."""
         # Initialize global gate first to ensure DB tables exist
@@ -794,7 +823,13 @@ class MultiProviderBudgetGate:
 
         # Check global gate first
         if isinstance(self.global_gate, CloudBudgetGate):
-            global_decision = await self.global_gate.reserve(session_id, estimated_input_tokens, requested_output_tokens)
+            global_decision = await self.global_gate.reserve(
+                session_id,
+                estimated_input_tokens,
+                requested_output_tokens,
+                input_price_usd_per_million=input_price_usd_per_million,
+                output_price_usd_per_million=output_price_usd_per_million,
+            )
             if not global_decision.allowed:
                 return global_decision
 
