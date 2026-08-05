@@ -129,7 +129,13 @@ def test_cloud_routes_are_ordered_by_the_lane_not_by_priority(router, monkeypatc
     assert "vendor/cheap" in diagnostics["capability_choice"]
 
 
-def test_a_model_that_fails_the_lane_is_dropped(router, monkeypatch, tmp_path):
+def test_a_model_that_fails_the_lane_is_demoted_not_dropped(router, monkeypatch, tmp_path):
+    """A configured route that misses the lane shortlist stays reachable, last.
+
+    Regression (EGI 2026-08-05 outage): known-but-unranked routes were dropped
+    entirely, so a lane-shortlist miss took every aggregator route offline. A
+    lane floor may demote a configured route to last resort; it must never
+    remove it."""
     cache = _catalog_cache(
         tmp_path,
         [
@@ -151,7 +157,7 @@ def test_a_model_that_fails_the_lane_is_dropped(router, monkeypatch, tmp_path):
 
     ordered = router._capability_order(routes, "classification", diagnostics)
 
-    assert [r.name for r in ordered] == ["good"]
+    assert [r.name for r in ordered] == ["good", "nt"]
     assert any("missing required parameter" in line for line in diagnostics["capability_rejected"])
 
 
@@ -171,8 +177,11 @@ def test_routes_the_catalog_does_not_list_are_kept_last_not_dropped(router, monk
     assert [r.name for r in ordered] == ["known", "private"]
 
 
-def test_benched_routes_are_excluded_using_the_routers_own_breaker(router, monkeypatch, tmp_path):
-    """Availability is observed. Reuse the breaker, do not invent a second signal."""
+def test_benched_routes_are_demoted_using_the_routers_own_breaker(router, monkeypatch, tmp_path):
+    """Availability is observed. Reuse the breaker, do not invent a second signal.
+
+    A benched route loses its lane rank and sorts last: still reachable as the
+    final fallback rather than vanishing, per the demote-not-drop rule."""
     cache = _catalog_cache(
         tmp_path,
         [
@@ -189,7 +198,7 @@ def test_benched_routes_are_excluded_using_the_routers_own_breaker(router, monke
 
     ordered = router._capability_order([flaky, steady], "classification", {})
 
-    assert [r.name for r in ordered] == ["steady"]
+    assert [r.name for r in ordered] == ["steady", "flaky"]
 
 
 def test_a_lane_that_clears_nothing_falls_back_to_the_given_order(router, monkeypatch, tmp_path):
@@ -208,7 +217,7 @@ def test_a_lane_that_clears_nothing_falls_back_to_the_given_order(router, monkey
     ordered = router._capability_order(routes, "code_review", diagnostics)
 
     assert ordered == routes, "every route must survive a lane that clears nothing"
-    assert "keeping static order" in diagnostics["capability_choice"]
+    assert "no model cleared" in diagnostics["capability_choice"]
 
 
 def test_empty_cloud_list_is_returned_untouched(router):

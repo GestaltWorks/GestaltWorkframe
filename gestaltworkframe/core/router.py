@@ -667,7 +667,11 @@ class LLMRouter:
             from gestaltworkframe.core.deployment_config import _deployment_id, _deployment_root
 
             return _deployment_root(_deployment_id())
-        except Exception:  # bad DEPLOYMENT_ID or missing bundle: defaults stand
+        except Exception as exc:  # bad DEPLOYMENT_ID or missing bundle: defaults stand
+            # Never silent: an unresolved bundle means lanes.yaml and
+            # transports.yaml are NOT applied. A downstream port swallowed this
+            # for days (EGI, 2026-08-05) while routing ran on defaults.
+            logger.warning("deployment bundle dir unresolved (%s); lanes/transports defaults in effect", exc)
             return None
 
     def _lane_for(self, task: str | None) -> Lane:
@@ -873,11 +877,17 @@ class LLMRouter:
         transports = self._transports()
 
         cleared = [r for r in candidates if self._catalog_id(r.model) in rank]
-        unlisted = [r for r in candidates if self._catalog_id(r.model) not in known]
+        # Everything that did not clear the lane stays configured and reachable,
+        # ordered last: a known-but-unranked route is a fallback, not
+        # disqualified. Dropping it turned a lane-shortlist miss into a full
+        # cloud outage downstream (EGI, 2026-08-05: every aggregator route
+        # vanished and the direct backups had no credits).
+        unlisted = [r for r in candidates if self._catalog_id(r.model) not in rank]
         # Model rank first, then transport: the aggregator is primary and the
         # direct provider is the backup for the SAME model, so a failure of the
         # aggregator retries that model directly before moving to another one.
         cleared.sort(key=lambda r: (rank[self._catalog_id(r.model)], transports.transport_kind(r.model)))
+        unlisted.sort(key=lambda r: (0 if self._catalog_id(r.model) in known else 1, transports.transport_kind(r.model)))
 
         diagnostics["capability_lane"] = lane.name
         diagnostics["capability_tier"] = resolution.tier
